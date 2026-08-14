@@ -1,0 +1,185 @@
+# Значения чарта myapp.
+#
+# Каждая запись services.<ключ> описывает один Deployment и один Service,
+# перенесённые 1:1 из base/deployment.yaml и base/service.yaml. Шаблоны
+# templates/deployment.yaml и templates/service.yaml разворачивают эту карту
+# через range, поэтому новый сервис добавляется правкой только этого файла.
+#
+# Поля записи:
+#   deploymentName  имя Deployment
+#   serviceName     имя Service — намеренно НЕ совпадает с deploymentName,
+#                   по нему сервисы обращаются друг к другу по DNS
+#   labelValue      значение метки svc, связывает Service с подами
+#   containerName   имя контейнера; задаётся, только если отличается от
+#                   deploymentName (единственный случай — база данных)
+#   strategy        RollingUpdate или Recreate
+#   nodeSelector    привязка к ноде; нужна только базе из-за hostPath-тома
+#   envFrom         ConfigMap и/или Secret целиком в переменные окружения
+#   volumes         тома: configMap для init-скриптов, pvc для данных
+#
+# Блок database ниже — самый полный, в нём задействованы все поля сразу.
+services:
+  database:
+    deploymentName: database
+    containerName: postgres
+    serviceName: db
+    labelValue: db
+    image: postgres:15.1-alpine
+    replicas: 1
+    strategy: Recreate
+    ports:
+      - containerPort: 5432
+    nodeSelector:
+      kubernetes.io/hostname: worker1
+    envFrom:
+      secret: svc-secrets
+    volumes:
+      - name: virtual-db-disk
+        mountPath: /docker-entrypoint-initdb.d/
+        configMap: database-script
+      - name: postgres-storage
+        mountPath: /var/lib/postgresql/data
+        pvc: postgres-pvc
+
+  rabbitmq:
+    deploymentName: rabbitmq
+    serviceName: rabbitmq
+    labelValue: rabbit
+    image: rabbitmq:3-management-alpine
+    replicas: 1
+    strategy: RollingUpdate
+    ports:
+      - name: data-exchange
+        containerPort: 5672
+      - name: web
+        containerPort: 15672
+    env:
+      - name: RABBITMQ_ALLOW_REMOTE_GUEST_ACCESS
+        value: "true"
+
+  session:
+    deploymentName: session-svc
+    serviceName: session-service
+    labelValue: session
+    image: sherryja/session-service:3.0
+    replicas: 1
+    strategy: RollingUpdate
+    ports:
+      - containerPort: 8081
+    envFrom:
+      configMap: environments
+      secret: svc-secrets
+    env:
+      - name: POSTGRES_DB
+        valueFrom:
+          configMapKeyRef:
+            name: environments
+            key: POSTGRES_DB_SESSION
+
+  hotel:
+    deploymentName: hotel-svc
+    serviceName: hotel-service
+    labelValue: hotel
+    image: sherryja/hotel-service:3.0
+    replicas: 1
+    strategy: RollingUpdate
+    ports:
+      - containerPort: 8082
+    envFrom:
+      configMap: environments
+      secret: svc-secrets
+    env:
+      - name: POSTGRES_DB
+        valueFrom:
+          configMapKeyRef:
+            name: environments
+            key: POSTGRES_DB_HOTEL
+
+  payment:
+    deploymentName: payment-svc
+    serviceName: payment-service
+    labelValue: payment
+    image: sherryja/payment-service:3.0
+    replicas: 1
+    strategy: RollingUpdate
+    ports:
+      - containerPort: 8084
+    envFrom:
+      configMap: environments
+      secret: svc-secrets
+    env:
+      - name: POSTGRES_DB
+        valueFrom:
+          configMapKeyRef:
+            name: environments
+            key: POSTGRES_DB_PAYMENT
+
+  report:
+    deploymentName: report-svc
+    serviceName: report-service
+    labelValue: report
+    image: sherryja/report-service:3.0
+    replicas: 1
+    strategy: RollingUpdate
+    ports:
+      - containerPort: 8086
+    envFrom:
+      configMap: environments
+      secret: svc-secrets
+    env:
+      - name: POSTGRES_DB
+        valueFrom:
+          configMapKeyRef:
+            name: environments
+            key: POSTGRES_DB_REPORT
+
+  loyalty:
+    deploymentName: loyalty-svc
+    serviceName: loyalty-service
+    labelValue: loyalty
+    image: sherryja/loyalty-service:3.0
+    replicas: 1
+    strategy: RollingUpdate
+    ports:
+      - containerPort: 8085
+    envFrom:
+      configMap: environments
+      secret: svc-secrets
+    env:
+      - name: POSTGRES_DB
+        valueFrom:
+          configMapKeyRef:
+            name: environments
+            key: POSTGRES_DB_LOYALTY
+
+  booking:
+    deploymentName: booking-svc
+    serviceName: booking-service
+    labelValue: booking
+    image: sherryja/booking-service:3.0
+    replicas: 1
+    strategy: RollingUpdate
+    ports:
+      - containerPort: 8083
+    envFrom:
+      configMap: environments
+      secret: svc-secrets
+    env:
+      - name: POSTGRES_DB
+        valueFrom:
+          configMapKeyRef:
+            name: environments
+            key: POSTGRES_DB_BOOKING
+
+  gateway:
+    deploymentName: gateway-svc
+    serviceName: gateway-service
+    labelValue: gateway
+    image: sherryja/gateway-service:3.0
+    # Было 1, сделал 5 чтобы стало 5 реплик через `helm upgrade`.
+    replicas: 5
+    strategy: RollingUpdate
+    ports:
+      - containerPort: 8087
+    envFrom:
+      configMap: environments

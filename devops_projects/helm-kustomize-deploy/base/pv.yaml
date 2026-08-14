@@ -1,0 +1,25 @@
+# Том для данных PostgreSQL.
+#
+# hostPath — это просто каталог на диске конкретной ноды, а не сетевое
+# хранилище. Отсюда два следствия, которые тянутся по всему проекту:
+#   1. под с базой привязан к worker1 через nodeSelector — на другой ноде
+#      каталога с данными нет (см. deployment.yaml, блок database);
+#   2. каталог заранее создаёт скрипт провижининга scripts/k3s-worker.sh.
+#
+# storageClassName: manual отключает динамическое создание томов: PVC свяжется
+# именно с этим PV, а не закажет новый у storage-провайдера.
+#
+# Объект cluster-scoped — namespace ему не задаётся.
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: postgres-pv
+spec:
+  storageClassName: manual
+  capacity:
+    storage: 5Gi
+  # ReadWriteOnce — том монтируется только одним узлом за раз.
+  accessModes:
+    - ReadWriteOnce
+  hostPath:
+    path: "/mnt/data/postgres"

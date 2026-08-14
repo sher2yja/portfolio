@@ -1,0 +1,47 @@
+# Единственная точка входа в приложение снаружи кластера.
+#
+# Наружу открыты только два маршрута из семи сервисов:
+#   /api/v1/auth    -> session-service:8081   (вход и регистрация)
+#   /api/v1/gateway -> gateway-service:8087   (всё остальное API)
+# К остальным пяти обращается уже сам gateway, изнутри кластера.
+#
+# Хост sherryja.school21 в DNS не существует: он прописывается вручную в
+# /etc/hosts хост-машины на адрес master-ноды 192.168.33.10.
+#
+# Контроллер — ingress-nginx, а не встроенный в k3s Traefik: тот отключён
+# флагом --disable=traefik в scripts/k3s-master.sh, а nginx ставит
+# scripts/deploy-app.sh.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: main-ingress
+  namespace: basic-kuber
+  annotations:
+    # Указываем какой именно issuer выдал сертификат
+    # cert-manager.io/cluster-issuer: selfsigned-issuer
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+spec:
+  # Указываем, что используем именно nginx-ingress
+  ingressClassName: nginx
+  tls:
+  - hosts:
+    - sherryja.school21
+    secretName: my-tls-keys
+  rules:
+  - host: sherryja.school21
+    http:
+      paths:
+      - path: /api/v1/auth
+        pathType: Prefix
+        backend:
+          service:
+            name: session-service
+            port:
+              number: 8081
+      - path: /api/v1/gateway
+        pathType: Prefix
+        backend:
+          service:
+            name: gateway-service
+            port:
+              number: 8087

@@ -1,0 +1,20 @@
+# Выпускающий центр для TLS-сертификатов кластера.
+#
+# selfSigned — сертификат подписывает сам себя, без внешнего удостоверяющего
+# центра. Для локального стенда этого достаточно: домен sherryja.school21
+# существует только в /etc/hosts, и Let's Encrypt его всё равно не подтвердит.
+# Браузер и curl будут ругаться на доверие — отсюда флаг --insecure в тестах.
+#
+# CRD ClusterIssuer появляется только после установки cert-manager: в базовой
+# поставке k3s его нет, поэтому scripts/deploy-app.sh ставит cert-manager
+# отдельным шагом до применения этого манифеста.
+#
+# Объект cluster-scoped — namespace не задаётся. Именно поэтому в проекте не
+# используется глобальный namespace-трансформер Kustomize: он проставил бы
+# metadata.namespace и сюда, и в PersistentVolume, что для них невалидно.
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: selfsigned-issuer
+spec:
+  selfSigned: {}

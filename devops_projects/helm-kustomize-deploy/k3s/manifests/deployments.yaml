@@ -1,0 +1,366 @@
+# Сырой манифест: применяется напрямую через kubectl, без Kustomize и Helm.
+# Его разворачивает scripts/deploy-app.sh автоматически при каждом vagrant up.
+#
+# Содержимо совпадает с base/deployment.yaml — подробные пояснения там.
+# Отличие от Kustomize-сборки: gateway-svc здесь с 1 репликой, в overlays/production их 3.
+
+# db
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: database
+  namespace: basic-kuber
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      svc: db
+  template:
+    metadata:
+      labels:
+        svc: db
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: worker1
+      containers:
+      - name: postgres
+        image: postgres:15.1-alpine
+        ports:
+        - containerPort: 5432
+        volumeMounts: # Примонтировали виртуальный диск virtual-db-disk внутрь контейнера в папку /docker-entrypoint-initdb.d/
+        - name: virtual-db-disk
+          mountPath: /docker-entrypoint-initdb.d/
+        - name: postgres-storage
+          mountPath: /var/lib/postgresql/data
+        envFrom:
+        - secretRef:
+            name: svc-secrets
+      volumes: # Создали виртуальный диск на машине с названием virtual-db-disk и содержимым из конфигмапа database-script
+      - name: virtual-db-disk
+        configMap:
+          name: database-script
+      - name: postgres-storage
+        persistentVolumeClaim:
+          claimName: postgres-pvc
+---
+
+# rabbitmq
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rabbitmq
+  namespace: basic-kuber
+spec:
+  replicas: 1
+  # strategy:
+  #   type: Recreate
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+  selector:
+    matchLabels:
+      svc: rabbit
+  template:
+    metadata:
+      labels:
+        svc: rabbit
+    spec:
+      containers:
+      - name: rabbitmq
+        image: rabbitmq:3-management-alpine
+        ports:
+        - containerPort: 5672
+        - containerPort: 15672
+        env: # Перестраховка, чтобы rabbimq принимал подключения под гостем с других подов
+        - name: RABBITMQ_ALLOW_REMOTE_GUEST_ACCESS
+          value: "true"
+
+---
+
+# session
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: session-svc
+  namespace: basic-kuber
+spec:
+  replicas: 1
+  # strategy:
+  #   type: Recreate
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+  selector:
+    matchLabels:
+      svc: session
+  template:
+    metadata:
+      labels:
+        svc: session
+    spec:
+      containers:
+      - name: session-svc
+        image: sherryja/session-service:3.0
+        ports:
+        - containerPort: 8081
+        env:
+        - name: POSTGRES_DB
+          valueFrom:
+            configMapKeyRef:
+              name: environments
+              key: POSTGRES_DB_SESSION
+        envFrom:
+        - configMapRef:
+            name: environments
+        - secretRef:
+            name: svc-secrets
+
+---
+
+# hotel
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hotel-svc
+  namespace: basic-kuber
+spec:
+  replicas: 1
+  # strategy:
+  #   type: Recreate
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+  selector:
+    matchLabels:
+      svc: hotel
+  template:
+    metadata:
+      labels:
+        svc: hotel
+    spec:
+      containers:
+      - name: hotel-svc
+        image: sherryja/hotel-service:3.0
+        ports:
+        - containerPort: 8082
+        env:
+        - name: POSTGRES_DB
+          valueFrom:
+            configMapKeyRef:
+              name: environments
+              key: POSTGRES_DB_HOTEL
+        envFrom:
+        - configMapRef:
+            name: environments
+        - secretRef:
+            name: svc-secrets
+
+---
+
+# payment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payment-svc
+  namespace: basic-kuber
+spec:
+  replicas: 1
+  # strategy:
+  #   type: Recreate
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+  selector:
+    matchLabels:
+      svc: payment
+  template:
+    metadata:
+      labels:
+        svc: payment
+    spec:
+      containers:
+      - name: payment-svc
+        image: sherryja/payment-service:3.0
+        ports:
+        - containerPort: 8084
+        env:
+        - name: POSTGRES_DB
+          valueFrom:
+            configMapKeyRef:
+              name: environments
+              key: POSTGRES_DB_PAYMENT
+        envFrom:
+        - configMapRef:
+            name: environments
+        - secretRef:
+            name: svc-secrets
+
+---
+
+# report
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: report-svc
+  namespace: basic-kuber
+spec:
+  replicas: 1
+  # strategy:
+  #   type: Recreate
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+  selector:
+    matchLabels:
+      svc: report
+  template:
+    metadata:
+      labels:
+        svc: report
+    spec:
+      containers:
+      - name: report-svc
+        image: sherryja/report-service:3.0
+        ports:
+        - containerPort: 8086
+        env:
+        - name: POSTGRES_DB
+          valueFrom:
+            configMapKeyRef:
+              name: environments
+              key: POSTGRES_DB_REPORT
+        envFrom:
+        - configMapRef:
+            name: environments
+        - secretRef:
+            name: svc-secrets
+            
+---
+        
+# loyalty
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: loyalty-svc
+  namespace: basic-kuber
+spec:
+  replicas: 1
+  # strategy:
+  #   type: Recreate
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+  selector:
+    matchLabels:
+      svc: loyalty
+  template:
+    metadata:
+      labels:
+        svc: loyalty
+    spec:
+      containers:
+      - name: loyalty-svc
+        image: sherryja/loyalty-service:3.0
+        ports:
+        - containerPort: 8085
+        env:
+        - name: POSTGRES_DB
+          valueFrom:
+            configMapKeyRef:
+              name: environments
+              key: POSTGRES_DB_LOYALTY
+        envFrom:
+        - configMapRef:
+            name: environments
+        - secretRef:
+            name: svc-secrets
+
+---
+
+# booking
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: booking-svc
+  namespace: basic-kuber
+spec:
+  replicas: 1
+  # strategy:
+  #   type: Recreate
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+  selector:
+    matchLabels:
+      svc: booking
+  template:
+    metadata:
+      labels:
+        svc: booking
+    spec:
+      containers:
+      - name: booking-svc
+        image: sherryja/booking-service:3.0
+        ports:
+        - containerPort: 8083
+        env:
+        - name: POSTGRES_DB
+          valueFrom:
+            configMapKeyRef:
+              name: environments
+              key: POSTGRES_DB_BOOKING
+        envFrom:
+        - configMapRef:
+            name: environments
+        - secretRef:
+            name: svc-secrets
+
+---
+
+# gateway
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gateway-svc
+  namespace: basic-kuber
+spec:
+  replicas: 1
+  # strategy:
+  #   type: Recreate
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+  selector:
+    matchLabels:
+      svc: gateway
+  template:
+    metadata:
+      labels:
+        svc: gateway
+    spec:
+      containers:
+      - name: gateway-svc
+        image: sherryja/gateway-service:3.0
+        ports:
+        - containerPort: 8087
+        envFrom:
+        - configMapRef:
+            name: environments

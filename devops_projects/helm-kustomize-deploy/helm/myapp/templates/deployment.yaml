@@ -1,0 +1,126 @@
+{{- /*
+Один шаблон на все девять Deployment.
+
+Вместо девяти почти одинаковых файлов чарт хранит карту services в values.yaml
+и разворачивает её здесь через range. Добавить сервис = дописать запись в
+values.yaml, шаблон трогать не нужно.
+
+$key   — ключ записи (database, gateway, ...), в манифест не попадает
+$svc   — сама запись со всеми полями сервиса
+$      — корневой контекст. Внутри range точка `.` подменена текущим элементом,
+         поэтому к .Release и .Chart обращаемся строго через $, иначе получим
+         "nil pointer evaluating interface {}".
+*/}}
+{{- range $key, $svc := .Values.services }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $svc.deploymentName }}
+  {{- /* namespace не зашит в чарт — приходит из флага --namespace при install */}}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    svc: {{ $svc.labelValue }}
+    {{- include "myapp.labels" $ | nindent 4 }}
+spec:
+  replicas: {{ $svc.replicas }}
+  strategy:
+    type: {{ $svc.strategy }}
+    {{- /*
+      Блок rollingUpdate валиден только при type: RollingUpdate — для Recreate
+      Kubernetes отвергнет манифест. У базы данных как раз Recreate: её том
+      ReadWriteOnce и двумя подами одновременно не монтируется.
+    */}}
+    {{- if eq $svc.strategy "RollingUpdate" }}
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+    {{- end }}
+  selector:
+    matchLabels:
+      svc: {{ $svc.labelValue }}
+  template:
+    metadata:
+      labels:
+        svc: {{ $svc.labelValue }}
+    spec:
+      {{- /*
+        nodeSelector есть только у базы: её PersistentVolume — это hostPath,
+        то есть каталог на диске конкретной ноды (worker1). Без привязки под
+        может уехать на другую ноду и не найти данные.
+      */}}
+      {{- with $svc.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        {{- /*
+          containerName переопределяет имя контейнера и задан только у базы:
+          там контейнер называется postgres, а Deployment — database.
+
+          Это не косметика. При передаче существующих объектов под управление
+          Helm (scripts/helm-adopt.sh) patch по списку containers сопоставляет
+          контейнеры по имени: не совпало — добавится второй контейнер вместо
+          замены первого. У остальных восьми сервисов имена совпадают, и поле
+          не нужно — отсюда default.
+        */}}
+        - name: {{ $svc.containerName | default $svc.deploymentName }}
+          image: {{ $svc.image }}
+          ports:
+            {{- range $svc.ports }}
+            - containerPort: {{ .containerPort }}
+            {{- end }}
+          {{- /*
+            Дальше всё опционально: env, envFrom и volumes есть не у каждого
+            сервиса. if/with пропускают блок целиком, если поля нет в values —
+            иначе в манифест попал бы пустой ключ и Kubernetes его отверг.
+            Разница: if проверяет значение, with ещё и переносит в него контекст.
+          */}}
+          {{- if $svc.env }}
+          env:
+            {{- range $svc.env }}
+            - name: {{ .name }}
+              {{- if .value }}
+              value: {{ .value | quote }}
+              {{- end }}
+              {{- if .valueFrom }}
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ .valueFrom.configMapKeyRef.name }}
+                  key: {{ .valueFrom.configMapKeyRef.key }}
+              {{- end }}
+            {{- end }}
+          {{- end }}
+          {{- with $svc.envFrom }}
+          envFrom:
+            {{- if .configMap }}
+            - configMapRef:
+                name: {{ .configMap }}
+            {{- end }}
+            {{- if .secret }}
+            - secretRef:
+                name: {{ .secret }}
+            {{- end }}
+          {{- end }}
+          {{- if $svc.volumes }}
+          volumeMounts:
+            {{- range $svc.volumes }}
+            - name: {{ .name }}
+              mountPath: {{ .mountPath }}
+            {{- end }}
+          {{- end }}
+      {{- if $svc.volumes }}
+      volumes:
+        {{- range $svc.volumes }}
+        - name: {{ .name }}
+          {{- if .configMap }}
+          configMap:
+            name: {{ .configMap }}
+          {{- end }}
+          {{- if .pvc }}
+          persistentVolumeClaim:
+            claimName: {{ .pvc }}
+          {{- end }}
+        {{- end }}
+      {{- end }}
+{{- end }}

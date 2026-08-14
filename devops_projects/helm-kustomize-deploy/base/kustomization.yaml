@@ -1,0 +1,21 @@
+# База: то, что одинаково для любого окружения.
+#
+# Здесь только сервисы, развёртывания и инфраструктурные объекты. Конкретные
+# значения конфигурации (ConfigMap, Secret) вынесены в overlays/production.
+#
+# Порядок в списке ни на что не влияет — Kustomize собирает все ресурсы в один
+# поток YAML, а очерёдность создания объектов разруливает уже сам Kubernetes.
+# Каждый файл здесь валиден сам по себе: любой можно применить напрямую через
+# kubectl apply -f, без Kustomize.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - namespace.yaml
+  - pv.yaml
+  - pvc.yaml
+  - service.yaml
+  - deployment.yaml
+  - issuer.yaml
+  - certificate.yaml
+  - ingress.yaml

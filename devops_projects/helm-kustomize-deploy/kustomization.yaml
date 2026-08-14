@@ -1,0 +1,13 @@
+# Верхняя точка входа Kustomize.
+#
+#   kustomize build .    — посмотреть итоговый YAML (27 объектов)
+#   kubectl apply -k .   — применить его к кластеру
+#
+# Сборка идёт по цепочке: этот файл -> overlays/production -> base.
+# Оверлей пока один, поэтому файл сводится к одной строке; появится dev или
+# staging — выбор окружения делается здесь.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - overlays/production

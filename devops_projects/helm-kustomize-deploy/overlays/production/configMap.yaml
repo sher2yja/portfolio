@@ -1,0 +1,69 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: environments
+  namespace: basic-kuber
+data:
+  # create, а не update: session-service и hotel-service при каждом старте
+  # выполняют свой data.sql, а он неидемпотентен (обычные INSERT с явными id).
+  # При update таблицы переживают рестарт, повторный INSERT падает с
+  # "duplicate key value violates unique constraint" и под уходит в
+  # CrashLoopBackOff — то есть приложение поднималось только на пустой БД.
+  # create совпадает с тем, что прописано в application.properties самих
+  # сервисов: схема пересоздаётся при старте, data.sql отрабатывает заново.
+  SPRING_JPA_HIBERNATE_DDL_AUTO: create
+
+  SESSION_SERVICE_HOST: "session-service"
+  SESSION_SERVICE_PORT: "8081"
+  HOTEL_SERVICE_HOST: "hotel-service"
+  HOTEL_SERVICE_PORT: "8082"
+  BOOKING_SERVICE_HOST: "booking-service"
+  BOOKING_SERVICE_PORT: "8083"
+  PAYMENT_SERVICE_HOST: "payment-service"
+  PAYMENT_SERVICE_PORT: "8084"
+  LOYALTY_SERVICE_HOST: "loyalty-service"
+  LOYALTY_SERVICE_PORT: "8085"
+  REPORT_SERVICE_HOST: "report-service"
+  REPORT_SERVICE_PORT: "8086"
+
+  POSTGRES_HOST: "db"
+  POSTGRES_PORT: "5432"
+  POSTGRES_DB_SESSION: "users_db"
+  POSTGRES_DB_PAYMENT: "payments_db"
+  POSTGRES_DB_LOYALTY: "balances_db"
+  POSTGRES_DB_HOTEL: "hotels_db"
+  POSTGRES_DB_REPORT: "statistics_db"
+  POSTGRES_DB_BOOKING: "reservations_db"
+
+  RABBIT_MQ_HOST: "rabbitmq"
+  RABBIT_MQ_PORT: "5672"
+  RABBIT_MQ_QUEUE_NAME: "messagequeue"
+  RABBIT_MQ_EXCHANGE: "messagequeue-exchange"
+
+---
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: database-script
+  namespace: basic-kuber
+data:
+  init.sql: |
+    \c postgres;
+    DROP DATABASE IF EXISTS users_db;
+    CREATE DATABASE users_db OWNER postgres;
+
+    DROP DATABASE IF EXISTS hotels_db;
+    CREATE DATABASE hotels_db OWNER postgres;
+
+    DROP DATABASE IF EXISTS reservations_db;
+    CREATE DATABASE reservations_db OWNER postgres;
+
+    DROP DATABASE IF EXISTS payments_db;
+    CREATE DATABASE payments_db OWNER postgres;
+
+    DROP DATABASE IF EXISTS balances_db;
+    CREATE DATABASE balances_db OWNER postgres;
+
+    DROP DATABASE IF EXISTS statistics_db;
+    CREATE DATABASE statistics_db OWNER postgres;

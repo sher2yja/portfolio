@@ -1,0 +1,16 @@
+# Strategic merge patch: меняет только число реплик gateway-svc.
+#
+# В патче перечислено ровно два вида полей — те, что нужны для поиска объекта
+# в базе (apiVersion, kind, metadata.name, namespace), и то единственное поле,
+# которое меняется. Всё остальное — образ, порты, переменные окружения, тома —
+# берётся из base/deployment.yaml и здесь не повторяется.
+#
+# Реплики добавлены именно gateway: через него идёт весь внешний трафик к
+# остальным сервисам, поэтому запас нужен ему, а не каждому из девяти.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gateway-svc
+  namespace: basic-kuber
+spec:
+  replicas: 3

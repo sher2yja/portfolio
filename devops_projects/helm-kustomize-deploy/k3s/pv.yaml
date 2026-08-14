@@ -1,0 +1,17 @@
+# Сырой манифест: применяется напрямую через kubectl, без Kustomize и Helm.
+# Его разворачивает scripts/deploy-app.sh автоматически при каждом vagrant up.
+#
+# Содержимо совпадает с base/pv.yaml — подробные пояснения там.
+
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: postgres-pv
+spec:
+  storageClassName: manual
+  capacity:
+    storage: 5Gi
+  accessModes:
+    - ReadWriteOnce
+  hostPath:
+    path: "/mnt/data/postgres"

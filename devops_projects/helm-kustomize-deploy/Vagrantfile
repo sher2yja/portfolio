@@ -1,0 +1,36 @@
+Vagrant.configure("2") do |config|
+  config.vm.box = "generic/ubuntu2204"
+  config.vm.synced_folder ".", "/vagrant"
+
+  nodes = {
+    "master"  => "192.168.33.10",
+    "worker1" => "192.168.33.11",
+    "worker2" => "192.168.33.12"
+  }
+
+  nodes.each do |name,ip|
+    config.vm.define name do |node|
+      node.vm.hostname = name
+      node.vm.network "private_network", ip: ip
+    
+      node.vm.provider "libvirt" do |lv|
+        lv.memory = 2048
+        lv.cpus = 2
+      end
+
+      if name == "master"
+        node.vm.provision "shell", path: "scripts/k3s-master.sh"
+
+        # Сработает один раз — только после завершения 'up' для машины master.
+        # (deploy-app.sh сам ждёт готовности всех 3 нод перед деплоем манифестов,
+        # см. шаг [1/6] внутри скрипта — поэтому привязка именно к master safe.)
+        node.trigger.after :up do |t|
+          t.info = "Auto-deploying application (addons + manifests)..."
+          t.run = { path: "scripts/deploy-app.sh" }
+        end
+      else
+        node.vm.provision "shell", path: "scripts/k3s-worker.sh"
+      end
+    end
+  end
+end

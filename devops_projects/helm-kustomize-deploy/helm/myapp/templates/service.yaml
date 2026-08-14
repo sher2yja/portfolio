@@ -1,0 +1,41 @@
+{{- /*
+Все девять Service из той же карты services, что и Deployment.
+
+Важно: serviceName и deploymentName намеренно РАЗНЫЕ — например Deployment
+называется session-svc, а Service session-service. Так было в исходных
+манифестах, и по Service-именам сервисы находят друг друга через DNS
+(http://hotel-service:8082 и т.п.). Переименование ради единообразия сломает
+межсервисные вызовы.
+*/}}
+{{- range $key, $svc := .Values.services }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $svc.serviceName }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    svc: {{ $svc.labelValue }}
+    {{- include "myapp.labels" $ | nindent 4 }}
+spec:
+  selector:
+    svc: {{ $svc.labelValue }}
+  ports:
+    {{- /*
+      Имя порта обязательно только когда портов несколько (у RabbitMQ их два:
+      5672 для AMQP и 15672 для веб-панели). При одном порте имя не нужно —
+      отсюда ветка else.
+    */}}
+    {{- range $svc.ports }}
+    {{- if .name }}
+    - name: {{ .name }}
+      protocol: TCP
+      port: {{ .containerPort }}
+      targetPort: {{ .containerPort }}
+    {{- else }}
+    - protocol: TCP
+      port: {{ .containerPort }}
+      targetPort: {{ .containerPort }}
+    {{- end }}
+    {{- end }}
+{{- end }}
