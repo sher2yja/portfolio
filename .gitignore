@@ -1,0 +1,23 @@
+# Секреты и ключи — никогда не коммитить
+.env
+*.env
+*_key
+*private_key*
+*.pem
+id_rsa*
+kubeconfig*
+.kube/
+
+# Vagrant: служебные каталоги содержат приватные SSH-ключи машин
+.vagrant/
+
+# Артефакты сборки
+*.tgz
+*.o
+*.out
+artifacts/
+
+# Системное
+.DS_Store
+*.swp
+*~
