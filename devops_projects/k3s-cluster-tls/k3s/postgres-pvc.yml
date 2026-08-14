@@ -1,0 +1,18 @@
+# Заявка на постоянный том для PostgreSQL.
+#
+# storageClassName и accessModes должны совпадать с postgres-pv.yml,
+# иначе заявка не свяжется с томом и останется в состоянии Pending.
+#
+# ReadWriteOnce — том монтируется только одним узлом одновременно.
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-pvc
+spec:
+  storageClassName: manual
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi

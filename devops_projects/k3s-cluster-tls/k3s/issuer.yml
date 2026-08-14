@@ -1,0 +1,15 @@
+# Самоподписывающий выпускающий центр для cert-manager.
+#
+# ClusterIssuer, а не Issuer: первый действует во всём кластере, второй
+# ограничен одним namespace. Сертификат нужен объектам в default, но
+# область видимости на весь кластер оставляет запас на будущие namespace.
+#
+# selfSigned выбран вынужденно: у стенда нет публичного IP, поэтому
+# Let's Encrypt не сможет пройти проверку владения доменом.
+
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: selfsigned-issuer
+spec:
+  selfSigned: {}

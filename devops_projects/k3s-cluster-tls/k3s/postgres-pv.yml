@@ -1,0 +1,34 @@
+# Постоянный том для PostgreSQL.
+#
+# hostPath — это каталог на диске КОНКРЕТНОЙ машины, данные в нём никуда
+# не переезжают. Отсюда блок nodeAffinity: без него планировщик может
+# запустить под на другом узле, где по тому же пути окажется пустой
+# каталог, и база молча стартует с нуля. Парная привязка — nodeSelector
+# в postgres.yml.
+#
+# Retain: при удалении PVC том не очищается, данные переживают удаление
+# заявки. storageClassName: manual отключает динамическое провижининг —
+# заявка связывается именно с этим томом, а не с созданным автоматически.
+
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: postgres-pv
+spec:
+  capacity:
+    storage: 5Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: manual
+  hostPath:
+    path: /data/postgres
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/hostname
+              operator: In
+              values:
+                - worker2
+                

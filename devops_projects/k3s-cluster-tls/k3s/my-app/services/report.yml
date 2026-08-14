@@ -1,0 +1,42 @@
+# report-service — статистика, порт 8086, база statistics_db.
+# Потребитель очереди RabbitMQ.
+# Общий шаблон всех семи сервисов описан в gateway.yml.
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: report-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: report-service
+  template:
+    metadata:
+      labels:
+        app: report-service
+    spec:
+      containers:
+        - name: report-service
+          image: iskstep93/report-service:05
+          ports:
+            - containerPort: 8086
+          envFrom:
+            - configMapRef:
+                name: my-config
+            - secretRef:
+                name: my-secrets
+          env:
+            - name: POSTGRES_DB
+              value: statistics_db
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: report-service
+spec:
+  selector:
+    app: report-service
+  ports:
+    - port: 8086
+      targetPort: 8086

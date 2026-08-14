@@ -1,0 +1,47 @@
+# booking-service — бронирования, порт 8083, база reservations_db.
+# Отправляет события в RabbitMQ, откуда их читает report-service.
+# Общий шаблон всех семи сервисов описан в gateway.yml.
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: booking-service
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: booking-service
+  template:
+    metadata:
+      labels:
+        app: booking-service
+    spec:
+      containers:
+        - name: booking-service
+          image: iskstep93/booking-service:05
+          ports:
+            - containerPort: 8083
+          envFrom:
+            - configMapRef:
+                name: my-config
+            - secretRef:
+                name: my-secrets
+          env:
+            - name: POSTGRES_DB
+              value: reservations_db
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: booking-service
+spec:
+  selector:
+    app: booking-service
+  ports:
+    - port: 8083
+      targetPort: 8083

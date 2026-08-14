@@ -1,0 +1,41 @@
+# Точка входа в приложение: домен, TLS и маршрутизация.
+#
+# Маршруты разделены по двум сервисам не произвольно, а так же, как их
+# вызывают функциональные тесты: авторизация идёт напрямую в session,
+# остальные запросы — через gateway.
+#
+# ingressClassName: nginx обязателен — штатный Traefik отключён при
+# установке k3s, трафик обрабатывает ingress-nginx на worker1.
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: gateway-ingress
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+#    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  ingressClassName: nginx
+  tls:
+  - hosts:
+    - api.192.168.56.12.nip.io
+    secretName: wildcard-tls
+  rules:
+  - host: api.192.168.56.12.nip.io
+    http:
+      paths:
+      - path: /api/v1/auth
+        pathType: Prefix
+        backend:
+          service:
+            name: session-service
+            port:
+              number: 8081
+      - path: /api/v1/gateway
+        pathType: Prefix
+        backend:
+          service:
+            name: gateway-service
+            port:
+              number: 8087

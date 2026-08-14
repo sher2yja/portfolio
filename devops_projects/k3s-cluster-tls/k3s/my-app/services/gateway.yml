@@ -1,0 +1,51 @@
+# gateway-service — единственная точка входа для запросов приложения.
+#
+# ОБЩИЙ ШАБЛОН ДЛЯ ВСЕХ СЕМИ СЕРВИСОВ (остальные шесть устроены так же):
+#   Deployment тянет образ с Docker Hub и подключает переменные окружения
+#   целиком через envFrom — общие настройки из ConfigMap my-config,
+#   учётные данные из Secret my-secrets. Своих env у сервисов нет.
+#   Service назван так же, как Deployment: это имя микросервисы ищут
+#   через DNS кластера, переименование разорвёт связи между ними.
+#
+# Тег образа :05 зафиксирован под этот проект и не совпадает с тегами в
+# соседних проектах серии — каждый описан в своём отчёте на своей версии.
+#
+# Readiness-проб нет: Spring Boot поднимается 15-35 секунд после того,
+# как под перешёл в Running, поэтому сразу после старта возможны 502.
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gateway-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gateway-service
+  template:
+    metadata:
+      labels:
+        app: gateway-service
+    spec:
+      containers:
+        - name: gateway-service
+          image: iskstep93/gateway-service:05
+          ports:
+            - containerPort: 8087
+          envFrom:
+            - configMapRef:
+                name: my-config
+            - secretRef:
+                name: my-secrets
+            
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gateway-service
+spec:
+  selector:
+    app: gateway-service
+  ports:
+    - port: 8087
+      targetPort: 8087

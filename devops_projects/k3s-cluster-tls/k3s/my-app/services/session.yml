@@ -1,0 +1,42 @@
+# session-service — авторизация, порт 8081. Единственный сервис кроме
+# gateway, на который маршрутизирует Ingress напрямую.
+# Общий шаблон всех семи сервисов описан в gateway.yml.
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: session-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: session-service
+  template:
+    metadata:
+      labels:
+        app: session-service
+    spec:
+      containers:
+        - name: session-service
+          image: iskstep93/session-service:05
+          ports:
+            - containerPort: 8081
+          envFrom:
+            - configMapRef:
+                name: my-config
+            - secretRef:
+                name: my-secrets
+          env:
+            - name: POSTGRES_DB
+              value: users_db
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: session-service
+spec:
+  selector:
+    app: session-service
+  ports:
+    - port: 8081
+      targetPort: 8081

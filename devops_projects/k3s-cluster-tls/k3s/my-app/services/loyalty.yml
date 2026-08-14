@@ -1,0 +1,42 @@
+# loyalty-service — бонусные балансы, порт 8085, база balances_db.
+# Тег образа :04, а не :05 как у остальных — сервис не пересобирался.
+# Общий шаблон всех семи сервисов описан в gateway.yml.
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: loyalty-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: loyalty-service
+  template:
+    metadata:
+      labels:
+        app: loyalty-service
+    spec:
+      containers:
+        - name: loyalty-service
+          image: iskstep93/loyalty-service:04
+          ports:
+            - containerPort: 8085
+          envFrom:
+            - configMapRef:
+                name: my-config
+            - secretRef:
+                name: my-secrets
+          env:
+            - name: POSTGRES_DB
+              value: balances_db
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: loyalty-service
+spec:
+  selector:
+    app: loyalty-service
+  ports:
+    - port: 8085
+      targetPort: 8085

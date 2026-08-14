@@ -1,0 +1,45 @@
+# Общая конфигурация всех микросервисов: адреса, порты, параметры JPA.
+#
+# SPRING_JPA_HIBERNATE_DDL_AUTO: update — прямое следствие перехода на
+# постоянный том. Пока база жила в emptyDir и обнулялась при каждом
+# рестарте, режим create был безобиден. С PV тот же режим затирал бы
+# таблицы при старте каждого сервиса. Режим update достраивает
+# недостающее, не трогая существующие данные.
+#
+# Изменения ConfigMap не подхватываются работающими подами: переменные
+# окружения читаются один раз при старте контейнера. После правки
+# Deployment нужно пересоздать.
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: my-config
+data:
+  POSTGRES_HOST: db
+  POSTGRES_PORT: "5432"
+
+  SPRING_JPA_HIBERNATE_DDL_AUTO: update
+
+  RABBIT_MQ_HOST: rabbitmq
+  RABBIT_MQ_PORT: "5672"
+  RABBIT_MQ_QUEUE_NAME: messagequeue
+  RABBIT_MQ_EXCHANGE: messagequeue-exchange
+
+  SESSION_SERVICE_HOST: session-service
+  SESSION_SERVICE_PORT: "8081"
+
+  HOTEL_SERVICE_HOST: hotel-service
+  HOTEL_SERVICE_PORT: "8082"
+
+  BOOKING_SERVICE_HOST: booking-service
+  BOOKING_SERVICE_PORT: "8083"
+
+  PAYMENT_SERVICE_HOST: payment-service
+  PAYMENT_SERVICE_PORT: "8084"
+
+  LOYALTY_SERVICE_HOST: loyalty-service
+  LOYALTY_SERVICE_PORT: "8085"
+
+  REPORT_SERVICE_HOST: report-service
+  REPORT_SERVICE_PORT: "8086"
+  
