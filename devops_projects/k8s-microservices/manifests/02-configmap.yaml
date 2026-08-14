@@ -1,0 +1,75 @@
+# Два ConfigMap: настройки сервисов и init-скрипт базы.
+#
+# environments — адреса и порты, по которым микросервисы находят друг друга.
+# Имена хостов здесь совпадают с именами Service в 04-services.yaml: DNS кластера
+# резолвит их внутри namespace. Переименование Service разорвёт связи.
+#
+# Отдельные ключи POSTGRES_DB_* нужны потому, что у каждого сервиса своя база.
+# Общего POSTGRES_DB нет: в 05-deployments.yaml каждый Deployment подставляет
+# себе нужный ключ через configMapKeyRef.
+#
+# database-script монтируется в контейнер postgres как /docker-entrypoint-initdb.d/
+# и выполняется при первом старте — так создаются 6 баз. DROP DATABASE IF EXISTS
+# делает скрипт повторяемым: том у базы временный, при каждом пересоздании пода
+# всё разворачивается с нуля.
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: environments
+  namespace: basic-kuber
+data:
+  SESSION_SERVICE_HOST: "session-service"
+  SESSION_SERVICE_PORT: "8081"
+  HOTEL_SERVICE_HOST: "hotel-service"
+  HOTEL_SERVICE_PORT: "8082"
+  BOOKING_SERVICE_HOST: "booking-service"
+  BOOKING_SERVICE_PORT: "8083"
+  PAYMENT_SERVICE_HOST: "payment-service"
+  PAYMENT_SERVICE_PORT: "8084"
+  LOYALTY_SERVICE_HOST: "loyalty-service"
+  LOYALTY_SERVICE_PORT: "8085"
+  REPORT_SERVICE_HOST: "report-service"
+  REPORT_SERVICE_PORT: "8086"
+
+  POSTGRES_HOST: "db"
+  POSTGRES_PORT: "5432"
+  POSTGRES_DB_SESSION: "users_db"
+  POSTGRES_DB_PAYMENT: "payments_db"
+  POSTGRES_DB_LOYALTY: "balances_db"
+  POSTGRES_DB_HOTEL: "hotels_db"
+  POSTGRES_DB_REPORT: "statistics_db"
+  POSTGRES_DB_BOOKING: "reservations_db"
+
+  RABBIT_MQ_HOST: "rabbitmq"
+  RABBIT_MQ_PORT: "5672"
+  RABBIT_MQ_QUEUE_NAME: "messagequeue"
+  RABBIT_MQ_EXCHANGE: "messagequeue-exchange"
+
+---
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: database-script
+  namespace: basic-kuber
+data:
+  init.sql: |
+    \c postgres;
+    DROP DATABASE IF EXISTS users_db;
+    CREATE DATABASE users_db OWNER postgres;
+
+    DROP DATABASE IF EXISTS hotels_db;
+    CREATE DATABASE hotels_db OWNER postgres;
+
+    DROP DATABASE IF EXISTS reservations_db;
+    CREATE DATABASE reservations_db OWNER postgres;
+
+    DROP DATABASE IF EXISTS payments_db;
+    CREATE DATABASE payments_db OWNER postgres;
+
+    DROP DATABASE IF EXISTS balances_db;
+    CREATE DATABASE balances_db OWNER postgres;
+
+    DROP DATABASE IF EXISTS statistics_db;
+    CREATE DATABASE statistics_db OWNER postgres;
