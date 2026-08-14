@@ -1,0 +1,68 @@
+# PostgreSQL на постоянном томе + Service для доступа из микросервисов.
+#
+# nodeSelector: worker2 — парная половина привязки к hostPath (вторая
+# половина, nodeAffinity, объявлена в postgres-pv.yml). Убрать любую из
+# двух — и база при следующем переезде пода поднимется на пустом каталоге.
+#
+# Service называется db, а не postgres: это имя ждут микросервисы в
+# переменной POSTGRES_HOST. Переименование сломает подключение к базе.
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: worker2
+      containers:
+        - name: postgres
+          image: postgres:15.1-alpine
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: my-secrets
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: my-secrets
+                  key: POSTGRES_PASSWORD
+            - name: POSTGRES_DB
+              value: postgres
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /var/lib/postgresql/data
+            - name: initdb
+              mountPath: /docker-entrypoint-initdb.d
+              readOnly: true
+
+      volumes:
+        - name: postgres-data
+          persistentVolumeClaim:
+            claimName: postgres-pvc
+        - name: initdb
+          configMap:
+            name: postgres-initdb  
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: db
+spec:
+  selector:
+    app: postgres
+  ports:
+    - port: 5432
+      targetPort: 5432

@@ -1,0 +1,41 @@
+# hotel-service — каталог отелей, порт 8082, база hotels_db.
+# Общий шаблон всех семи сервисов описан в gateway.yml.
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hotel-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hotel-service
+  template:
+    metadata:
+      labels:
+        app: hotel-service
+    spec:
+      containers:
+        - name: hotel-service
+          image: iskstep93/hotel-service:05
+          ports:
+            - containerPort: 8082
+          envFrom:
+            - configMapRef:
+                name: my-config
+            - secretRef:
+                name: my-secrets
+          env:
+            - name: POSTGRES_DB
+              value: hotels_db
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hotel-service
+spec:
+  selector:
+    app: hotel-service
+  ports:
+    - port: 8082
+      targetPort: 8082

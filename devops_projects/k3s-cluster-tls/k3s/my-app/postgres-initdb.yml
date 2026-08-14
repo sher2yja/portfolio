@@ -1,0 +1,37 @@
+# Init-скрипт: создаёт по одной базе на каждый микросервис.
+#
+# Монтируется в /docker-entrypoint-initdb.d и выполняется образом
+# postgres ТОЛЬКО при первом старте, когда каталог данных пуст. После
+# перехода на постоянный том скрипт при перезапусках больше не
+# отрабатывает — таблицы дальше поддерживает Hibernate в режиме update.
+#
+# DROP DATABASE IF EXISTS оставлен от версии с emptyDir и на постоянном
+# томе не срабатывает — по той же причине.
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-initdb
+data:
+  init.sql: |
+    \c postgres;
+
+    DROP DATABASE IF EXISTS users_db;
+    CREATE DATABASE users_db OWNER postgres;
+
+    DROP DATABASE IF EXISTS hotels_db;
+    CREATE DATABASE hotels_db OWNER postgres;
+
+    DROP DATABASE IF EXISTS reservations_db;
+    CREATE DATABASE reservations_db OWNER postgres;
+
+    DROP DATABASE IF EXISTS payments_db;
+    CREATE DATABASE payments_db OWNER postgres;
+
+    DROP DATABASE IF EXISTS balances_db;
+    CREATE DATABASE balances_db OWNER postgres;
+
+    DROP DATABASE IF EXISTS statistics_db;
+    CREATE DATABASE statistics_db OWNER postgres;
+
+    
