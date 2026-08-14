@@ -1,0 +1,159 @@
+# Девять Service — по одному на каждый Deployment.
+#
+# Имена Service и Deployment намеренно НЕ совпадают: Deployment называется
+# session-svc, а Service — session-service. Именно через имена Service сервисы
+# находят друг друга по внутреннему DNS (http://hotel-service:8082 и т.п.),
+# они же прописаны в ConfigMap с адресами. Переименование ради единообразия
+# сломает межсервисные вызовы.
+#
+# Тип не указан — значит ClusterIP: наружу приложение выходит только через
+# Ingress, напрямую порты нод не занимаются.
+#
+# Связь Service с подами идёт по метке svc, а не по имени Deployment.
+
+# db
+apiVersion: v1
+kind: Service
+metadata:
+  name: db
+  namespace: basic-kuber
+spec:
+  selector:
+    svc: db
+  ports:
+  - protocol: TCP
+    port: 5432
+    targetPort: 5432
+
+---
+
+# rabbitmq
+apiVersion: v1
+kind: Service
+metadata:
+  name: rabbitmq
+  namespace: basic-kuber
+spec:
+  selector:
+    svc: rabbit
+  ports:
+  - name: data-exchange
+    protocol: TCP
+    port: 5672
+    targetPort: 5672
+  - name: web
+    protocol: TCP
+    port: 15672
+    targetPort: 15672
+
+---
+
+# session
+apiVersion: v1
+kind: Service
+metadata:
+  name: session-service
+  namespace: basic-kuber
+spec:
+  selector:
+    svc: session
+  ports:
+  - protocol: TCP
+    port: 8081
+    targetPort: 8081
+
+---
+
+# hotel
+apiVersion: v1
+kind: Service
+metadata:
+  name: hotel-service
+  namespace: basic-kuber
+spec:
+  selector:
+    svc: hotel
+  ports:
+  - protocol: TCP
+    port: 8082
+    targetPort: 8082
+
+---
+
+# payment
+apiVersion: v1
+kind: Service
+metadata:
+  name: payment-service
+  namespace: basic-kuber
+spec:
+  selector:
+    svc: payment
+  ports:
+  - protocol: TCP
+    port: 8084
+    targetPort: 8084
+
+---
+
+# report
+apiVersion: v1
+kind: Service
+metadata:
+  name: report-service
+  namespace: basic-kuber
+spec:
+  selector:
+    svc: report
+  ports:
+  - protocol: TCP
+    port: 8086
+    targetPort: 8086
+
+---
+
+# loyalty
+apiVersion: v1
+kind: Service
+metadata:
+  name: loyalty-service
+  namespace: basic-kuber
+spec:
+  selector:
+    svc: loyalty
+  ports:
+  - protocol: TCP
+    port: 8085
+    targetPort: 8085
+
+---
+
+# booking
+apiVersion: v1
+kind: Service
+metadata:
+  name: booking-service
+  namespace: basic-kuber
+spec:
+  selector:
+    svc: booking
+  ports:
+  - protocol: TCP
+    port: 8083
+    targetPort: 8083
+
+---
+
+# gateway
+apiVersion: v1
+kind: Service
+metadata:
+  name: gateway-service
+  namespace: basic-kuber
+spec:
+  selector:
+    svc: gateway
+  ports:
+  - protocol: TCP
+    port: 8087
+    targetPort: 8087

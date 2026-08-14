@@ -1,0 +1,17 @@
+# Сырой манифест: применяется напрямую через kubectl, без Kustomize и Helm.
+# Его разворачивает scripts/deploy-app.sh автоматически при каждом vagrant up.
+#
+# Содержимо совпадает с base/pvc.yaml — подробные пояснения там.
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-pvc
+  namespace: basic-kuber
+spec:
+  storageClassName: manual
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi

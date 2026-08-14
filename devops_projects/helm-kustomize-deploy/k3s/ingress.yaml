@@ -1,0 +1,39 @@
+# Сырой манифест: применяется напрямую через kubectl, без Kustomize и Helm.
+# Его разворачивает scripts/deploy-app.sh автоматически при каждом vagrant up.
+#
+# Содержимо совпадает с base/ingress.yaml — подробные пояснения там.
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: main-ingress
+  namespace: basic-kuber
+  annotations:
+    # Указываем какой именно issuer выдал сертификат
+    # cert-manager.io/cluster-issuer: selfsigned-issuer
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+spec:
+  # Указываем, что используем именно nginx-ingress
+  ingressClassName: nginx
+  tls:
+  - hosts:
+    - sherryja.school21
+    secretName: my-tls-keys
+  rules:
+  - host: sherryja.school21
+    http:
+      paths:
+      - path: /api/v1/auth
+        pathType: Prefix
+        backend:
+          service:
+            name: session-service
+            port:
+              number: 8081
+      - path: /api/v1/gateway
+        pathType: Prefix
+        backend:
+          service:
+            name: gateway-service
+            port:
+              number: 8087

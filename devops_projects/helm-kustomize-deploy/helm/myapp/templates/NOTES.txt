@@ -1,0 +1,9 @@
+Release "{{ .Release.Name }}" deployed into namespace "{{ .Release.Namespace }}".
+
+Check rollout status:
+  kubectl get deployments,pods,svc -n {{ .Release.Namespace }}
+
+Workloads deployed by this chart:
+{{- range $key, $svc := .Values.services }}
+  - {{ $svc.deploymentName }} / {{ $svc.serviceName }}
+{{- end }}

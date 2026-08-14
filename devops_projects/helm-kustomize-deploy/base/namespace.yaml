@@ -1,0 +1,6 @@
+# Namespace приложения. Здесь живёт всё, кроме двух cluster-scoped объектов:
+# PersistentVolume (pv.yaml) и ClusterIssuer (issuer.yaml).
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: basic-kuber

@@ -1,0 +1,31 @@
+# TLS-сертификат для домена приложения.
+#
+# Объект описывает, какой сертификат нужен, а выпускает его cert-manager: он
+# обращается к ClusterIssuer из issuer.yaml, генерирует ключи и кладёт их в
+# Secret my-tls-keys. Этот же Secret указан в tls-секции ingress.yaml —
+# так связываются Certificate и Ingress.
+#
+# Сертификат самоподписанный, поэтому клиенты не будут ему доверять; в тестах
+# и curl нужен флаг --insecure.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: my-cert
+  namespace: basic-kuber
+spec:
+  # Сюда cert-manager положит выпущенные ключ и сертификат.
+  secretName: my-tls-keys
+
+  duration: 2160h # Срок действия 90 дней
+  renewBefore: 240h # Обновить за 10 дней до конца
+
+  # Настройка доменных имен
+  commonName: sherryja.school21 # Основное доменное имя
+  dnsNames: # Все действительные доменные имена
+  - sherryja.school21
+  - "*.sherryja.school21"
+
+  # Ссылка на соответствующий issue
+  issuerRef:
+    name: selfsigned-issuer
+    kind: ClusterIssuer

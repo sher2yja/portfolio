@@ -1,0 +1,21 @@
+# Заявка на том для PostgreSQL — связывается с postgres-pv.
+#
+# Совпадение storageClassName, accessModes и запрошенного размера с параметрами
+# PV обязательно, иначе PVC зависнет в состоянии Pending.
+#
+# ReadWriteOnce здесь — причина, по которой у Deployment базы стоит стратегия
+# Recreate, а не RollingUpdate: том нельзя примонтировать к двум подам сразу,
+# и при RollingUpdate новый под встаёт в ContainerCreating, пока старый держит
+# том, — а старый не уходит, пока новый не станет готов.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-pvc
+  namespace: basic-kuber
+spec:
+  storageClassName: manual
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi

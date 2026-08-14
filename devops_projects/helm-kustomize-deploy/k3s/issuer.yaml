@@ -1,0 +1,11 @@
+# Сырой манифест: применяется напрямую через kubectl, без Kustomize и Helm.
+# Его разворачивает scripts/deploy-app.sh автоматически при каждом vagrant up.
+#
+# Содержимо совпадает с base/issuer.yaml — подробные пояснения там.
+
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: selfsigned-issuer
+spec:
+  selfSigned: {}

@@ -1,0 +1,9 @@
+# Сырой манифест: применяется напрямую через kubectl, без Kustomize и Helm.
+# Его разворачивает scripts/deploy-app.sh автоматически при каждом vagrant up.
+#
+# Содержимо совпадает с base/namespace.yaml — подробные пояснения там.
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: basic-kuber
