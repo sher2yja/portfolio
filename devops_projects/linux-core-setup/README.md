@@ -12,7 +12,7 @@
 
 ![Ubuntu](https://img.shields.io/badge/OS-Ubuntu%2020.04%20LTS-E95420?style=for-the-badge&logo=ubuntu&logoColor=white)
 ![Bash](https://img.shields.io/badge/Shell-Bash-4EAA25?style=for-the-badge&logo=gnu-bash&logoColor=white)
-![OpenSSH](https://img.shields.io/badge/Remote-OpenSSH-000000?style=for-the-badge&logo=openssh&logoColor=white)
+![OpenSSH](https://img.shields.io/badge/Remote-OpenSSH-000000?style=for-the-badge)
 ![Netplan](https://img.shields.io/badge/Network-Netplan-0A7BBB?style=for-the-badge&logo=linux&logoColor=white)
 ![VirtualBox](https://img.shields.io/badge/Virtualization-VirtualBox-183A61?style=for-the-badge&logo=virtualbox&logoColor=white)
 

@@ -14,7 +14,7 @@
 ![Netplan](https://img.shields.io/badge/Network-Netplan-0A7BBB?style=for-the-badge&logo=linux&logoColor=white)
 ![iptables](https://img.shields.io/badge/Firewall-iptables-EE0000?style=for-the-badge&logo=linux&logoColor=white)
 ![DHCP](https://img.shields.io/badge/DHCP-isc--dhcp--server-005571?style=for-the-badge&logo=internetarchive&logoColor=white)
-![OpenSSH](https://img.shields.io/badge/Tunnels-OpenSSH-000000?style=for-the-badge&logo=openssh&logoColor=white)
+![OpenSSH](https://img.shields.io/badge/Tunnels-OpenSSH-000000?style=for-the-badge)
 ![VirtualBox](https://img.shields.io/badge/Virtualization-VirtualBox-183A61?style=for-the-badge&logo=virtualbox&logoColor=white)
 
 ---
