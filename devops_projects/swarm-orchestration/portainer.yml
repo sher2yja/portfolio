@@ -1,0 +1,58 @@
+# Portainer — веб-интерфейс к кластеру. Для задания не обязателен, но
+# наглядно показывает, как Swarm разложил сервисы по узлам.
+#
+# Разворачивается отдельным стеком:
+#   docker stack deploy -c portainer.yml portainer
+#
+# Устроен из двух частей: агент запускается на каждом узле (mode: global)
+# и знает о его контейнерах, интерфейс — в одном экземпляре на менеджере.
+#
+# Обращение по адресу tasks.agent, а не agent, — это разные вещи. Обычное
+# имя сервиса Swarm резолвит в один виртуальный адрес и балансирует между
+# репликами, то есть Portainer видел бы каждый раз случайный узел. Префикс
+# tasks. возвращает адреса всех экземпляров сразу — именно это и нужно,
+# чтобы собрать картину по кластеру целиком.
+#
+# Сеть у стека своя, отдельная от сети приложения: с ним Portainer
+# не взаимодействует, а работает через сокет Docker на своём узле.
+
+version: '3.8'
+
+services:
+  agent:
+    image: portainer/agent:2.21.0-alpine
+    environment:
+      AGENT_CLUSTER_ADDR: tasks.agent
+    volumes:
+      # агент получает привилегированный доступ к локальному Docker Engine 
+      - /var/run/docker.sock:/var/run/docker.sock
+      # агент может листать/удалять/копировать содержимое томов
+      - /var/lib/docker/volumes:/var/lib/docker/volumes
+    networks:
+      - portainer_agent
+    deploy:
+      mode: global
+      placement:
+        constraints: [node.platform.os == linux]
+
+  portainer:
+    image: portainer/portainer-ce:alpine
+    command: -H tcp://tasks.agent:9001 --tlsskipverify
+    ports:
+      - "9000:9000"
+    volumes:
+      - portainer_data:/data
+    networks:
+      - portainer_agent 
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [node.role == manager]
+
+networks:
+  portainer_agent:
+    driver: overlay
+    attachable: true # контейнерам (запущенным не как swarm-сервисы) присоединяться к сети
+
+volumes:
+  portainer_data: # Хранит данные Portainer
