@@ -1,0 +1,197 @@
+# Часть 1. Приложение из семи микросервисов на одной машине.
+#
+# Запуск: docker compose up -d
+#
+# ── Чего в этом репозитории нет ──────────────────────────────────────
+# Каталог services/ — исходный код приложения из поставки учебного курса,
+# он сюда не выложен. На запуск это не влияет: сборка образов уже выполнена,
+# и compose тянет готовые образы из публичного реестра по тегу :03.
+# Исходники нужны только для пересборки и для init.sql, который создаёт базы.
+#
+# Тег :03 закреплён за этим заданием. У соседних заданий сквозной линии
+# свои теги, и подтягивать их к одному значению нельзя: отчёты описывают
+# поведение именно зафиксированной версии.
+#
+# ── Секреты ──────────────────────────────────────────────────────────
+# Пароли Postgres и RabbitMQ — учебные заглушки локального стенда,
+# не образец рабочей практики.
+
+services:
+  # =============== БАЗА ДАННЫХ ===============
+  db:
+    image: postgres:13-alpine
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres  # основная БД; остальные создаются сервисами
+    volumes:
+      - db_data:/var/lib/postgresql/data
+      - ./services/database/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      app_net:
+        aliases:
+          - db 
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+
+  # =============== RABBITMQ ===============
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    restart: always
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    networks:
+      app_net:
+        aliases:
+          - rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # =============== MICROSERVICES ===============
+  session-service:
+    image: iskstep93/session-service:03
+    restart: always
+    environment:
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: users_db
+      SERVER_PORT: 8081
+    networks:
+      - app_net
+
+  hotel-service:
+    image: iskstep93/hotel-service:03
+    restart: always
+    environment:
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: hotels_db
+      SERVER_PORT: 8082
+    networks:
+      - app_net
+
+  payment-service:
+    image: iskstep93/payment-service:03
+    restart: always
+    environment:
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: payments_db
+      SERVER_PORT: 8084
+    networks:
+      - app_net
+
+  loyalty-service:
+    image: iskstep93/loyalty-service:03
+    restart: always
+    environment:
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: balances_db
+      SERVER_PORT: 8085
+    networks:
+      - app_net
+
+  report-service:
+    image: iskstep93/report-service:03
+    restart: always
+    environment:
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: statistics_db
+      RABBIT_MQ_HOST: rabbitmq
+      RABBIT_MQ_PORT: 5672
+      RABBIT_MQ_USER: guest
+      RABBIT_MQ_PASSWORD: guest
+      RABBIT_MQ_QUEUE_NAME: messagequeue
+      RABBIT_MQ_EXCHANGE: messagequeue-exchange
+      SERVER_PORT: 8086
+    networks:
+      - app_net
+
+  booking-service:
+    image: iskstep93/booking-service:03
+    restart: always
+    environment:
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: reservations_db
+      RABBIT_MQ_HOST: rabbitmq
+      RABBIT_MQ_PORT: 5672
+      RABBIT_MQ_USER: guest
+      RABBIT_MQ_PASSWORD: guest
+      RABBIT_MQ_QUEUE_NAME: messagequeue
+      RABBIT_MQ_EXCHANGE: messagequeue-exchange
+      HOTEL_SERVICE_HOST: hotel-service
+      HOTEL_SERVICE_PORT: 8082
+      PAYMENT_SERVICE_HOST: payment-service
+      PAYMENT_SERVICE_PORT: 8084
+      LOYALTY_SERVICE_HOST: loyalty-service
+      LOYALTY_SERVICE_PORT: 8085
+      SERVER_PORT: 8083
+    networks:
+      - app_net
+
+  gateway-service:
+    image: iskstep93/gateway-service:03
+    restart: always
+    environment:
+      SESSION_SERVICE_HOST: session-service
+      SESSION_SERVICE_PORT: 8081
+      HOTEL_SERVICE_HOST: hotel-service
+      HOTEL_SERVICE_PORT: 8082
+      BOOKING_SERVICE_HOST: booking-service
+      BOOKING_SERVICE_PORT: 8083
+      PAYMENT_SERVICE_HOST: payment-service
+      PAYMENT_SERVICE_PORT: 8084
+      LOYALTY_SERVICE_HOST: loyalty-service
+      LOYALTY_SERVICE_PORT: 8085
+      REPORT_SERVICE_HOST: report-service
+      REPORT_SERVICE_PORT: 8086
+      SERVER_PORT: 8087
+    networks:
+      - app_net
+
+# Добавлю сервис nginx-proxy
+  nginx-proxy:
+    image: nginx:1.29.1-alpine
+    ports:
+      - "8081:8081"
+      - "8087:8087"
+    volumes:
+      - /home/vagrant/app/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    networks:
+      - app_net
+    deploy:
+      placement:
+        constraints: [node.role == manager]
+    restart: always
+
+# =============== СЕТЬ И ТОМЫ ===============
+networks:
+  app_net:
+    driver: overlay
+    attachable: true
+
+volumes:
+  db_data:

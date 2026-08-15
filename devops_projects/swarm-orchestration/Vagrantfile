@@ -1,0 +1,83 @@
+# Часть 3. Стенд под кластер Docker Swarm: менеджер и два рабочих узла.
+#
+# Запуск: vagrant up
+#
+# По 1 ядру и 1 ГБ памяти на узел — этого хватает самому Swarm, но не всему
+# приложению разом. Приложение из семи микросервисов на Spring Boot в части 1
+# запускается через Docker Compose на одной машине, а здесь проверяется
+# сборка кластера и распределение сервисов по узлам.
+#
+# Каталог проекта монтируется на все три машины по одному пути. На этом
+# держится передача токена входа: менеджер кладёт его в scripts/, рабочие
+# узлы оттуда читают. Сам файл токена в репозиторий не выкладывается —
+# он создаётся заново при каждом подъёме стенда.
+#
+# Триггер после подъёма последней машины выводит сводку по кластеру —
+# сразу видно, собрался он или нет, без ручного захода на менеджер.
+
+Vagrant.configure("2") do |config|
+  BOX       = "ubuntu/jammy64"
+  CPU_COUNT = 1
+  RAM_MB    = 1024
+
+  MANAGER_IP = "192.168.56.10"
+  WORKER1_IP = "192.168.56.11"
+  WORKER2_IP = "192.168.56.12"
+
+  # Монтируем всю папку src в /home/vagrant/app на всех машинах
+  config.vm.synced_folder ".", "/home/vagrant/app"
+
+  # === Менеджер ===
+  config.vm.define "manager01", primary: true do |m|
+    m.vm.box = BOX
+    m.vm.hostname = "manager01"
+    m.vm.network "private_network", ip: MANAGER_IP
+    # Проброс порта 9000 для Portainer (будет нужно позже)
+    # m.vm.network "forwarded_port", guest: 9000, host: 9000, auto_correct: true
+
+    m.vm.provider "virtualbox" do |vb|
+      vb.cpus   = CPU_COUNT
+      vb.memory = RAM_MB
+    end
+
+    m.vm.provision "shell", path: "scripts/installdocker.sh"
+    m.vm.provision "shell", path: "scripts/manager.sh"
+  end
+
+  # === Worker 1 ===
+  config.vm.define "worker01" do |w|
+    w.vm.box = BOX
+    w.vm.hostname = "worker01"
+    w.vm.network "private_network", ip: WORKER1_IP
+
+    w.vm.provider "virtualbox" do |vb|
+      vb.cpus   = CPU_COUNT
+      vb.memory = RAM_MB
+    end
+
+    w.vm.provision "shell", path: "scripts/installdocker.sh"
+    w.vm.provision "shell", path: "scripts/join.sh"
+  end
+
+  # === Worker 2 ===
+  config.vm.define "worker02" do |w|
+    w.vm.box = BOX
+    w.vm.hostname = "worker02"
+    w.vm.network "private_network", ip: WORKER2_IP
+
+    w.vm.provider "virtualbox" do |vb|
+      vb.cpus   = CPU_COUNT
+      vb.memory = RAM_MB
+    end
+
+    w.vm.provision "shell", path: "scripts/installdocker.sh"
+    w.vm.provision "shell", path: "scripts/join.sh"
+
+    # После полного запуска кластера — запускаем проверку
+    w.trigger.after :up do |t|
+      t.name = "check-swarm"
+      t.info = "Проверка состояния Swarm..."
+      t.run = { inline: "vagrant ssh manager01 -c 'bash /home/vagrant/app/scripts/check-swarm.sh'" }
+    end
+  end
+end
