@@ -1,0 +1,4 @@
+---
+postgresql_version: "14"
+pg_listen_cidr: "0.0.0.0/0"
+pg_auth_method: "md5"

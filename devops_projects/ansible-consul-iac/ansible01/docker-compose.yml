@@ -1,0 +1,201 @@
+# Go-версия docker compose рекомендует убрать директиву version:
+# version: '3.8' 
+
+services:
+  # =============== БАЗА ДАННЫХ ===============
+  db:
+    image: postgres:13-alpine
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres  # основная БД; остальные создаются сервисами
+    volumes:
+      - db_data:/var/lib/postgresql/data
+      - ./services/database/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - app_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+
+  # =============== RABBITMQ ===============
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    restart: always
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    networks:
+      - app_net
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # =============== MICROSERVICES ===============
+  # Все сервисы НЕ имеют проброса портов наружу (кроме gateway и session-service)
+  # Общаются внутри сети по DNS-именам: http://hotel-service:8082
+
+  session-service:
+    image: lorentsh/session-service:02
+    restart: always
+    ports:
+      - "8081:8081" # ПУБЛИЧНЫЙ ПОРТ
+    environment:
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: users_db
+      SERVER_PORT: 8081
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - app_net
+
+  hotel-service:
+    image: lorentsh/hotel-service:02
+    restart: always
+    environment:
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: hotels_db
+      SERVER_PORT: 8082
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - app_net
+
+  payment-service:
+    image: lorentsh/payment-service:02
+    restart: always
+    environment:
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: payments_db
+      SERVER_PORT: 8084
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - app_net
+
+  loyalty-service:
+    image: lorentsh/loyalty-service:02
+    restart: always
+    environment:
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: balances_db
+      SERVER_PORT: 8085
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - app_net
+
+  report-service:
+    image: lorentsh/report-service:02
+    restart: always
+    environment:
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: statistics_db
+      RABBIT_MQ_HOST: rabbitmq
+      RABBIT_MQ_PORT: 5672
+      RABBIT_MQ_USER: guest
+      RABBIT_MQ_PASSWORD: guest
+      RABBIT_MQ_QUEUE_NAME: messagequeue
+      RABBIT_MQ_EXCHANGE: messagequeue-exchange
+      SERVER_PORT: 8086
+    depends_on:
+      db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - app_net
+
+  booking-service:
+    image: lorentsh/booking-service:02
+    restart: always
+    environment:
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: reservations_db
+      RABBIT_MQ_HOST: rabbitmq
+      RABBIT_MQ_PORT: 5672
+      RABBIT_MQ_USER: guest
+      RABBIT_MQ_PASSWORD: guest
+      RABBIT_MQ_QUEUE_NAME: messagequeue
+      RABBIT_MQ_EXCHANGE: messagequeue-exchange
+      HOTEL_SERVICE_HOST: hotel-service
+      HOTEL_SERVICE_PORT: 8082
+      PAYMENT_SERVICE_HOST: payment-service
+      PAYMENT_SERVICE_PORT: 8084
+      LOYALTY_SERVICE_HOST: loyalty-service
+      LOYALTY_SERVICE_PORT: 8085
+      SERVER_PORT: 8083
+    depends_on:
+      db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      hotel-service: { condition: service_started }
+      payment-service: { condition: service_started }
+      loyalty-service: { condition: service_started }
+    networks:
+      - app_net
+
+  gateway-service:
+    image: lorentsh/gateway-service:02
+    restart: always
+    ports:
+      - "8087:8087"  # ПУБЛИЧНЫЙ ПОРТ
+    environment:
+      SESSION_SERVICE_HOST: session-service
+      SESSION_SERVICE_PORT: 8081
+      HOTEL_SERVICE_HOST: hotel-service
+      HOTEL_SERVICE_PORT: 8082
+      BOOKING_SERVICE_HOST: booking-service
+      BOOKING_SERVICE_PORT: 8083
+      PAYMENT_SERVICE_HOST: payment-service
+      PAYMENT_SERVICE_PORT: 8084
+      LOYALTY_SERVICE_HOST: loyalty-service
+      LOYALTY_SERVICE_PORT: 8085
+      REPORT_SERVICE_HOST: report-service
+      REPORT_SERVICE_PORT: 8086
+      SERVER_PORT: 8087
+    depends_on:
+      session-service: { condition: service_started }
+      hotel-service: { condition: service_started }
+      booking-service: { condition: service_started }
+      payment-service: { condition: service_started }
+      loyalty-service: { condition: service_started }
+      report-service: { condition: service_started }
+    networks:
+      - app_net
+
+# =============== СЕТЬ И ТОМЫ ===============
+networks:
+  app_net:
+    driver: bridge
+
+volumes:
+  db_data:

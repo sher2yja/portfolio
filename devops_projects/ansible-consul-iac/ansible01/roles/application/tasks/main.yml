@@ -1,0 +1,107 @@
+---
+- name: Ensure /etc/apt/keyrings directory exists
+  file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: "0755"
+
+- name: Docker | Download Docker GPG key
+  get_url:
+    url: "{{ docker_gpg_url }}"
+    dest: /etc/apt/keyrings/docker.asc
+    mode: "0644"
+
+- name: Docker | Add Docker APT repository
+  apt_repository:
+    repo: "{{ docker_apt_repo }}"
+    state: present
+    filename: docker
+
+- name: Apt | Update apt cache
+  apt:
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Docker | Install Docker packages
+  apt:
+    name:
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
+      - docker-buildx-plugin
+      - docker-compose-plugin
+    state: present
+
+- name: Docker | Ensure Docker service is enabled and started
+  service:
+    name: docker
+    enabled: true
+    state: started
+
+- name: Docker | Add vagrant user to docker group
+  user:
+    name: vagrant
+    groups: docker
+    append: true
+
+- name: Ensure application directory exists
+  file:
+    path: "{{ app_dest_dir }}"
+    state: directory
+    owner: vagrant
+    group: vagrant
+    mode: "0755"
+
+- name: Copy docker-compose.yml from manager
+  copy:
+    src: /home/vagrant/app/docker-compose.yml
+    dest: "{{ compose_file }}"
+    owner: vagrant
+    group: vagrant
+    mode: "0644"
+    force: no
+
+- name: Copy services directory
+  copy:
+    src: /home/vagrant/app/services/
+    dest: "{{ app_dest_dir }}/services/"
+    owner: vagrant
+    group: vagrant
+    mode: "0644"
+    directory_mode: "0755"
+    force: no
+
+- name: Pull images
+  command:
+    cmd: "docker compose -f {{ compose_file }} pull"
+    chdir: "{{ app_dest_dir }}"
+  register: compose_pull
+  failed_when: compose_pull.rc != 0
+
+- name: Start containers
+  command:
+    cmd: "docker compose -f {{ compose_file }} up -d"
+    chdir: "{{ app_dest_dir }}"
+  register: compose_up
+  failed_when: compose_up.rc != 0
+
+- name: Wait for gateway-service to be ready
+  wait_for:
+    host: localhost
+    port: 8087
+    timeout: 90
+  when: compose_up is succeeded
+
+- name: Show running containers
+  command:
+    argv:
+      - docker
+      - ps
+      - --format
+      - "{{'{{'}}.Names{{'}}'}}\t{{'{{'}}.Status{{'}}'}}\t{{'{{'}}.Ports{{'}}'}}"
+  register: dps
+  changed_when: false
+
+- name: Display container status
+  debug:
+    var: dps.stdout_lines

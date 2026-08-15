@@ -1,0 +1,180 @@
+# Часть 1, первая версия развёртывания — один плоский плейбук без ролей.
+#
+# Оставлен как история решения: его содержимое затем переехало в роль
+# application, и рабочим вариантом стал site.yml. Роль удобнее тем, что
+# переменные вынесены в defaults и переопределяются без правки задач.
+#
+# Запуск напрямую: ansible-playbook -i inventory deploy_node01.yaml
+
+---
+- name: Prepare node01 and deploy microservices
+  # На чем выполняем из inventory
+  hosts: node01
+  # Выполнять задачи от root так как по заданию нужно установить
+  become: true
+  # Описываем перменные
+  vars:
+    # Путь на manager с которого копируем
+    app_src_dir: /home/vagrant/app
+    # Путь на node01, куда развёртываем
+    app_dest_dir: /home/vagrant/app
+    # используем уже заданаю переменную app_dest_dir
+    compose_file: "{{ app_dest_dir }}/docker-compose.yml"
+    # для докера берем офицальный докер
+    docker_gpg_url: "https://download.docker.com/linux/ubuntu/gpg"
+    docker_apt_repo: "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+  
+  # Описываем таски
+  tasks:
+    - name: Ensure /etc/apt/keyrings directory exists
+      # file позволяет управлять состоянием файлов, директорий, симлинков и прав доступа
+      file:
+        # Путь
+        path: /etc/apt/keyrings
+        # Что это может быть file или в нашем случае директория
+        state: directory
+        # Права - чтение всем, но меняет только рут
+        mode: "0755"
+
+    - name: Docker | Download Docker GPG key
+      # get_url скачивает файл
+      get_url:
+        # В качестве ссылки берем ссылку указанную в перменных
+        url: "{{ docker_gpg_url }}"
+        # Указываем куда сохранять
+        dest: /etc/apt/keyrings/docker.asc
+        # Права - так как это ключ, то нельзя выполнять и изменять не рутом
+        mode: "0644"
+
+    - name: Docker | Add Docker APT repository
+      # apt_repository - Проверяет, есть ли уже такой репозиторий, если нет —
+      # создаёт файл и устанавливает правильные права
+      apt_repository:
+        # Берем репозиторий из перменных
+        repo: "{{ docker_apt_repo }}"
+        # Добавить, если отсутствует
+        state: present
+        # Имя файла
+        filename: docker
+
+    - name: Docker | Update apt cache
+      # Модуль позволяет привести пакет в нужное стояние, проверит состояние
+      apt:
+        # Обновит кэш только если устарел
+        update_cache: true
+
+    - name: Docker | Install Docker packages
+      apt:
+        name:
+          # сам энеджин
+          - docker-ce
+          # клиент для общения
+          - docker-ce-cli
+          - containerd.io
+          - docker-buildx-plugin
+          # для compose
+          - docker-compose-plugin
+        # установить если не установлен
+        state: present
+
+    - name: Docker | Ensure Docker service is enabled and started
+      # Управлять системными службами - проще говоря статус, старт, рестарт итд
+      service:
+        # Имя systemd 
+        name: docker
+        # Включить автозапуск при загрузке
+        enabled: true
+        # Запустить прямо сейчас
+        state: started
+
+    - name: Docker | Add vagrant user to docker group
+      # Модуль управляет пользователями
+      user:
+        # Имя пользователя
+        name: vagrant
+        # В какую группу добавить
+        groups: docker
+        # Добавить группы, не заменяя существующие
+        append: true
+
+    - name: node01 | Ensure application directory exists
+      file:
+        path: "{{ app_dest_dir }}"
+        state: directory
+        # Устанавливаем владельца
+        owner: vagrant
+        group: vagrant
+        # Права - чтение всем, но меняет только рут
+        mode: "0755"
+
+    - name: node01 | Copy docker-compose.yml from manager
+      # Безопасно и идемпотентно скопировать файл с управляющей машины
+      # (control node) на удалённые хосты, с контролем прав, владельца и целостности
+      copy:
+        src: "{{ app_src_dir }}/docker-compose.yml"
+        dest: "{{ app_dest_dir }}/docker-compose.yml"
+        owner: vagrant
+        group: vagrant
+        # Читать всем, редактировать — только владельцу
+        mode: "0644"
+
+    - name: node01 | Copy services directory (e.g., init.sql)
+      copy:
+        src: "{{ app_src_dir }}/services/"
+        dest: "{{ app_dest_dir }}/services/"
+        owner: vagrant
+        group: vagrant
+        # Читать всем, редактировать — только владельцу
+        mode: "0644"
+        directory_mode: "0755"
+
+    - name: Docker | Pull images (pre-warm)
+      # Выполнить произвольную shell-команду на удалённой машине, 
+      # без интерпретации через оболочку 
+      command:
+        # скачивает все образы, указанные в docker-compose.yml
+        cmd: docker compose -f {{ compose_file }} pull
+        # Выполнить команду, предварительно перейдя в директорию
+        chdir: "{{ app_dest_dir }}"
+      # Здесь стояло args: warn: false — оно отключало подсказку Ansible
+      # «для этой команды есть отдельный модуль». Параметр warn удалён
+      # из модуля command в ansible-core 2.14, и на свежих версиях задача
+      # падает с ошибкой Unsupported parameters for (command) module: warn.
+      # Убрано: подсказка была необязательной, работоспособность важнее.
+      # Сохраняет результат выполнения задачи в переменную
+      register: compose_pull
+
+    - name: Docker | Start containers in detached mode
+      command:
+        cmd: docker compose -f {{ compose_file }} up -d
+        chdir: "{{ app_dest_dir }}"
+      # args: warn: false убрано по той же причине, что и выше
+      register: compose_up
+
+    - name: Wait | Give services time to initialize (DB, RabbitMQ, etc.)
+      pause:
+        seconds: 100
+
+    - name: Info | List running containers
+      command:
+        # способ передать команду и её аргументы в модуль command, 
+        # в виде списка строк, а не одной строки
+        argv:
+          - docker
+          - ps
+          # кастомизирует вывод docker ps в Имя, статус и порты
+          - --format
+          - "{{'{{'}}.Names{{'}}'}}\t{{'{{'}}.Status{{'}}'}}\t{{'{{'}}.Ports{{'}}'}}"
+      register: dps
+      # принудительно устанавливает статус задачи в ok, docker ps - 
+      # read-only операция, она ничего не меняет в системе,
+      # command по умолчанию возвращает changed: true, если rc == 0
+      changed_when: false
+
+    - name: Info | Display container status
+      # Вывести информацию в лог выполнения Ansible
+      # — для отладки, проверки переменных, диагностики.
+      debug:
+        # dps переменная которую мы сохранили в предыдущей задаче
+        # stdout_lines — автоматически создаётся Ansible: список строк, разбитый по \n
+        var: dps.stdout_lines

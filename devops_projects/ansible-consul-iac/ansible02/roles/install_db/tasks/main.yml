@@ -1,0 +1,39 @@
+---
+- name: Install PostgreSQL and dependencies
+  apt:
+    name: ["postgresql", "postgresql-contrib", "python3-psycopg2", "acl"]
+    state: present
+    update_cache: yes
+
+- name: Start PostgreSQL
+  systemd:
+    name: postgresql
+    enabled: yes
+    state: started
+
+- name: Set password for postgres user
+  become: yes
+  become_user: postgres
+  postgresql_query:
+    query: "ALTER USER postgres PASSWORD 'postgres';"
+
+- name: Allow local TCP connections
+  lineinfile:
+    path: /etc/postgresql/14/main/pg_hba.conf
+    line: "host all all 127.0.0.1/32 scram-sha-256"
+    insertafter: EOF
+  notify: restart postgresql
+
+- name: Create hotels_db
+  become: yes
+  become_user: postgres
+  postgresql_db:
+    name: hotels_db
+    owner: postgres
+
+- name: Ensure DB is reachable
+  become: yes
+  become_user: postgres
+  postgresql_query:
+    db: hotels_db
+    query: "SELECT 1;"

@@ -1,0 +1,5 @@
+---
+app_dest_dir: /home/vagrant/app
+compose_file: "{{ app_dest_dir }}/docker-compose.yml"
+docker_gpg_url: "https://download.docker.com/linux/ubuntu/gpg"
+docker_apt_repo: "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"

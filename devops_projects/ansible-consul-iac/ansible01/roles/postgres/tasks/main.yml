@@ -1,0 +1,89 @@
+---
+- name: Apt | Update apt cache
+  apt:
+    update_cache: true
+    cache_valid_time: 3600
+  become: true
+
+- name: Install PostgreSQL
+  apt:
+    name: "postgresql-{{ postgresql_version }}"
+    state: present
+  become: true
+
+- name: Install acl package (required for become_user with non-root users)
+  apt:
+    name: acl
+    state: present
+  become: true
+
+- name: Install psycopg2 Python library for Ansible PostgreSQL modules
+  apt:
+    name: python3-psycopg2
+    state: present
+  become: true
+
+- name: Ensure PostgreSQL service is enabled and started
+  service:
+    name: postgresql
+    enabled: true
+    state: started
+  become: true
+
+# --- Работаем через Unix-сокет (peer-аутентификация) ---
+- name: Create database 'testdb'
+  postgresql_db:
+    name: testdb
+    state: present
+  become: true
+  become_user: postgres
+
+- name: Create table 'users' in testdb
+  postgresql_query:
+    db: testdb
+    query: |
+      CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
+        food VARCHAR(25),
+        count VARCHAR(50)
+      );
+  become: true
+  become_user: postgres
+
+- name: Insert sample data into users table
+  postgresql_query:
+    db: testdb
+    query: |
+      INSERT INTO users (food, count) VALUES
+      ('Апельсин', '10'),
+      ('Мандарин', '15'),
+      ('Ананас', '20')
+      ON CONFLICT DO NOTHING;
+  become: true
+  become_user: postgres
+
+# Критически важно: задаём пароль ДО изменения pg_hba.conf
+- name: Ensure postgres user has a password
+  postgresql_user:
+    name: postgres
+    password: "postgres"
+    # login_host НЕ УКАЗАН → используется Unix-сокет (peer)
+    # login_user НЕ УКАЗАН → используется текущий пользователь (postgres)
+  become: true
+  become_user: postgres
+
+# --- Теперь можно настраивать сетевой доступ ---
+- name: Configure listen_addresses
+  lineinfile:
+    path: "/etc/postgresql/{{ postgresql_version }}/main/postgresql.conf"
+    regexp: '^#?listen_addresses\s*='
+    line: "listen_addresses = '{{ pg_listen_cidr.split('/')[0] }}'"
+  notify: Restart Postgres
+  become: true
+
+- name: Configure pg_hba.conf to allow remote connections
+  lineinfile:
+    path: "/etc/postgresql/{{ postgresql_version }}/main/pg_hba.conf"
+    line: "host all all {{ pg_listen_cidr }} {{ pg_auth_method }}"
+  notify: Restart Postgres
+  become: true

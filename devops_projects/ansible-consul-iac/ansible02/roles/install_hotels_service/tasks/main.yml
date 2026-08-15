@@ -1,0 +1,69 @@
+---
+- name: Install OpenJDK 8
+  apt:
+    name: openjdk-8-jre
+    state: present
+    update_cache: yes
+
+- name: Create app dir
+  file:
+    path: /opt/hotel-service
+    state: directory
+    owner: vagrant
+    group: vagrant
+    mode: "0755"
+
+- name: Copy JAR from manager
+  copy:
+    src: /home/vagrant/services/hotel-service/target/
+    dest: /opt/hotel-service/target/
+    owner: vagrant
+    group: vagrant
+    directory_mode: "0755"
+
+- name: Find JAR file
+  find:
+    paths: /opt/hotel-service/target
+    patterns: "hotel-service-*.jar"
+  register: jar
+
+- name: Fail if JAR missing
+  assert:
+    that: jar.files | length > 0
+    fail_msg: "JAR not found!"
+
+- name: Create env file
+  copy:
+    content: |
+      POSTGRES_HOST=127.0.0.1
+      POSTGRES_PORT=5432
+      POSTGRES_DB=hotels_db
+      POSTGRES_USER=postgres
+      POSTGRES_PASSWORD=postgres
+    dest: /etc/hotel-service.env
+    mode: "0644"
+
+- name: Create systemd unit
+  copy:
+    content: |
+      [Unit]
+      Description=Hotel Service
+      After=network.target consul-envoy@hotel.service
+      Requires=consul-envoy@hotel.service
+      [Service]
+      EnvironmentFile=/etc/hotel-service.env
+      ExecStart=/usr/bin/java -jar {{ jar.files[0].path }}
+      Restart=on-failure
+      User=vagrant
+      WorkingDirectory=/opt/hotel-service
+      [Install]
+      WantedBy=multi-user.target
+    dest: /etc/systemd/system/hotel.service
+    mode: "0644"
+
+- name: Start hotel service
+  systemd:
+    name: hotel
+    enabled: yes
+    state: started
+    daemon_reload: yes

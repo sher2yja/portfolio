@@ -1,0 +1,23 @@
+{
+  "service": {
+    "name": "hotel",
+    "port": 8082,
+    "check": {
+      "tcp": "127.0.0.1:8082",
+      "interval": "10s",
+      "timeout": "3s"
+    },
+    "connect": {
+      "sidecar_service": {
+        "proxy": {
+          "upstreams": [
+            {
+              "destination_name": "postgres",
+              "local_bind_port": 5432
+            }
+          ]
+        }
+      }
+    }
+  }
+}

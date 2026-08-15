@@ -1,0 +1,68 @@
+---
+- name: Create Consul directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - /opt/consul
+    - /opt/consul/data
+    - /etc/consul.d
+
+- name: Copy Consul server config
+  copy:
+    src: ../../../consul01/consul_server.hcl
+    dest: /etc/consul.d/consul.hcl
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Ensure Consul ZIP exists on manager
+  stat:
+    path: /tmp/consul.zip
+  delegate_to: localhost
+  run_once: true
+  register: consul_zip
+
+- name: Fail if Consul ZIP missing
+  assert:
+    that: consul_zip.stat.exists
+    fail_msg: "Consul ZIP not found on manager at /tmp/consul.zip"
+
+- name: Copy Consul ZIP to target node
+  copy:
+    src: /tmp/consul.zip
+    dest: /tmp/consul.zip
+    mode: "0644"
+
+- name: Unzip Consul
+  unarchive:
+    src: /tmp/consul.zip
+    dest: /usr/local/bin
+    remote_src: yes
+    mode: "0755"
+
+- name: Create Consul systemd unit
+  copy:
+    content: |
+      [Unit]
+      Description=Consul Server
+      After=network.target
+      [Service]
+      ExecStart=/usr/local/bin/consul agent -config-dir=/etc/consul.d -data-dir=/opt/consul
+      Restart=on-failure
+      User=root
+      [Install]
+      WantedBy=multi-user.target
+    dest: /etc/systemd/system/consul.service
+    owner: root
+    mode: "0644"
+
+- name: Reload systemd and start Consul
+  systemd:
+    name: consul
+    enabled: yes
+    state: started
+    daemon_reload: yes

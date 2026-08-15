@@ -1,0 +1,72 @@
+# Часть 2, точка входа. Запуск: ansible-playbook -i inventory.yml site.yml
+#
+# Пять play подряд, и порядок принципиален:
+#
+#   1. сборка JAR на менеджере — до всего остального, артефакт нужен api
+#   2. сервер Consul — клиенты при старте ищут его по retry_join
+#   3. клиенты Consul на api и db — оба узла сразу, роль одна и та же
+#   4. PostgreSQL на db — регистрируется в Consul как сервис postgres
+#   5. hotel-service на api — находит базу через Consul, а не по адресу
+#
+# Перестановка второго и третьего шагов оставила бы клиентов без сервера:
+# они бы стартовали, повторяли попытки подключения и не регистрировались.
+#
+# Сборка вынесена в первый play, а не в роль: она выполняется один раз
+# и только на менеджере, тогда как роли применяются к целевым узлам.
+
+---
+- name: Build hotel-service JAR on manager
+  hosts: manager
+  become: yes
+  vars:
+    src_dir: /home/vagrant/services/hotel-service
+  tasks:
+    - name: Install JDK and Maven
+      apt:
+        name: ["openjdk-8-jdk", "maven"]
+        state: present
+        update_cache: yes
+
+    - name: Ensure source code exists
+      stat:
+        path: "{{ src_dir }}/pom.xml"
+      register: pom
+      failed_when: not pom.stat.exists
+
+    - name: Build JAR (skip tests)
+      command:
+        cmd: mvn clean package -DskipTests
+        chdir: "{{ src_dir }}"
+      environment:
+        JAVA_HOME: /usr/lib/jvm/java-8-openjdk-amd64
+
+    - name: Verify JAR built
+      find:
+        paths: "{{ src_dir }}/target"
+        patterns: "hotel-service-*.jar"
+      register: jar_files
+      failed_when: jar_files.files | length == 0
+
+- name: Install Consul server
+  hosts: consul_server
+  become: yes
+  roles:
+    - install_consul_server
+
+- name: Install Consul clients
+  hosts: api,db
+  become: yes
+  roles:
+    - install_consul_client
+
+- name: Deploy PostgreSQL
+  hosts: db
+  become: yes
+  roles:
+    - install_db
+
+- name: Deploy hotel-service
+  hosts: api
+  become: yes
+  roles:
+    - install_hotels_service
