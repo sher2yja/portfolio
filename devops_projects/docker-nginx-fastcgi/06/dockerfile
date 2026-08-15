@@ -1,0 +1,31 @@
+# Часть 6. Образ приложения для схемы из двух контейнеров.
+#
+# Отличие от части 5 — в адресе, на котором слушает FastCGI-приложение:
+#
+#   -p 81         порт, по которому к нему обращается соседний контейнер
+#   -a 0.0.0.0    без этого spawn-fcgi слушает только петлевой интерфейс
+#                 и запрос из другого контейнера до приложения не дойдёт
+#
+# Строки useradd и USER из части 5 в этой версии отсутствуют — образ
+# снова работает от root. Так было в сданной работе, и здесь это сохранено:
+# в отчёте расхождение отмечено отдельно.
+#
+# Базовый образ по-прежнему содержит nginx, и ENTRYPOINT его запускает,
+# хотя в этой схеме внешний трафик принимает отдельный контейнер
+# nginx-proxy, описанный в docker-compose.yml.
+
+FROM nginx:1.24.0
+
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    libfcgi-dev \
+    spawn-fcgi \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY server.c /tmp/server.c
+
+COPY ./nginx/nginx.conf /etc/nginx/nginx.conf
+
+RUN gcc -o /tmp/server /tmp/server.c -lfcgi
+
+ENTRYPOINT ["sh", "-c", "spawn-fcgi -p 81 -a 0.0.0.0 -n /tmp/server & nginx -g \"daemon off;\""]

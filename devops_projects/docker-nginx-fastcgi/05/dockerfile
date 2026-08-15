@@ -1,0 +1,41 @@
+# Часть 5. Тот же образ после замечаний Dockle.
+#
+# Dockle — статический анализатор образов: разбирает слои и ищет отступления
+# от практик безопасности. Исправлены четыре его замечания:
+#
+#   DKL-DI-0006  latest → nginx:1.24.0. Тег latest указывает каждый раз
+#                на разное содержимое, и сборка перестаёт быть воспроизводимой
+#   DKL-DI-0005  rm -rf /var/lib/apt/lists/* в том же слое, что и apt-get.
+#                Отдельным слоем не помогло бы: удалённое остаётся
+#                в предыдущем слое и продолжает занимать место в образе
+#   CIS-DI-0001  добавлен пользователь sc21d05, работа больше не от root
+#   CIS-DI-0010  ключ NGINX_GPGKEY из базового образа; собственных
+#                учётных данных в переменных окружения нет, поэтому
+#                замечание снимается флагами: dockle -ak NGINX_GPGKEY -i CIS-DI-0010
+#
+# ВАЖНО. Переход на непривилегированного пользователя ломает запуск, если
+# оставить конфигурацию nginx без изменений: pid-файл пишется в /var/run,
+# который принадлежит root. Dockle этого не ловит — он смотрит на образ,
+# а не на запущенный контейнер. Решение — в 05/nginx/nginx.conf.
+
+FROM nginx:1.24.0
+
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    libfcgi-dev \
+    spawn-fcgi \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY server.c /tmp/server.c
+
+COPY ./nginx/nginx.conf /etc/nginx/nginx.conf
+
+RUN gcc -o /tmp/server /tmp/server.c -lfcgi
+
+RUN useradd -m sc21d05
+
+RUN chown -R sc21d05:sc21d05 /tmp /var/cache/nginx /var/log/nginx /etc/nginx
+
+USER sc21d05
+
+ENTRYPOINT ["sh", "-c", "spawn-fcgi -p 8080 -n /tmp/server & nginx -g \"daemon off;\""]
