@@ -15,7 +15,7 @@
 ![C](https://img.shields.io/badge/Build-C%20%2F%20Make-A8B9CC?style=for-the-badge&logo=c&logoColor=black)
 ![clang-format](https://img.shields.io/badge/Lint-clang--format-262D3A?style=for-the-badge&logo=llvm&logoColor=white)
 ![Telegram](https://img.shields.io/badge/Alerts-Telegram%20Bot%20API-26A5E4?style=for-the-badge&logo=telegram&logoColor=white)
-![SSH](https://img.shields.io/badge/Delivery-SSH%20%2F%20SCP-000000?style=for-the-badge&logo=openssh&logoColor=white)
+![SSH](https://img.shields.io/badge/Delivery-SSH%20%2F%20SCP-000000?style=for-the-badge)
 
 ---
 
