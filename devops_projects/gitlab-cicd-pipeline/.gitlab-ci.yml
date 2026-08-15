@@ -1,0 +1,162 @@
+# Конвейер GitLab CI/CD для консольной программы на C.
+#
+# Четыре стадии: проверка стиля, сборка, интеграционные тесты, доставка
+# на удалённый сервер. Раннер работает с shell-исполнителем, поэтому все
+# команды выполняются прямо на машине раннера, без контейнера.
+#
+# ВХОДНЫЕ ДАННЫЕ ОТ КУРСА. Конвейер собирает и проверяет программу,
+# которая приходит в составе задания и в этот репозиторий не входит:
+#   code-samples/main.c              исходник программы
+#   code-samples/Makefile            сборка
+#   materials/linters/.clang-format  правила форматирования
+# Поэтому запустить конвейер как есть на этом репозитории нельзя —
+# он опубликован как результат работы, а не как готовый к запуску шаблон.
+# Своё здесь — сам конвейер и два скрипта в scripts/.
+#
+# ПУТИ. При переносе в портфолио уровень src/ убран: в сданной работе
+# скрипты лежали в src/, а артефакты собирались в src/artifacts/. Здесь
+# им соответствуют scripts/ и artifacts/, пути в конфигурации приведены
+# к новой раскладке.
+
+stages:
+  - style
+  - build
+  - test
+  - deploy
+
+style_code:
+  stage: style
+  # Стадия обязана валить конвейер: смысл проверки стиля в том, чтобы
+  # непричёсанный код не доходил до сборки.
+  allow_failure: false
+  script:
+    # Правила форматирования приходят от курса и лежат вне code-samples/,
+    # а clang-format ищет .clang-format рядом с проверяемым файлом —
+    # отсюда копирование туда и обратно вместо ссылки на файл.
+    - cp materials/linters/.clang-format code-samples/
+
+    - ls -la code-samples/.clang-format
+
+    # clang-format -n ничего не переписывает, а только сообщает о
+    # расхождениях; -Werror превращает их в ненулевой код возврата.
+    # Вывод сначала гасится, чтобы при успехе в логе была одна строка,
+    # и повторяется целиком, только если проверка не прошла.
+    - |
+      if clang-format -n -Werror --verbose code-samples/*.c > /dev/null 2>&1; then
+        echo "✅ Код соответствует стилю"
+      else
+        echo "❌ Ошибки форматирования найдены!"
+        clang-format -n -Werror --verbose code-samples/*.c
+        exit 1
+      fi
+
+    # Каталог курса возвращается в исходное состояние: раннер переиспользует
+    # рабочую копию между задачами, и оставленный файл всплыл бы в следующей.
+    - rm code-samples/.clang-format
+  after_script:
+    # after_script выполняется независимо от того, упала задача или нет —
+    # именно поэтому уведомление вызывается здесь, а не в script.
+    - chmod +x scripts/tele.sh
+    - ./scripts/tele.sh
+
+build_project:
+  stage: build
+  script:
+    # Каталог артефактов пересоздаётся: раннер переиспользует рабочую копию,
+    # и без очистки в сборку попал бы бинарник от предыдущего запуска.
+    - rm -rf artifacts
+
+    - mkdir -p artifacts
+
+    - make -C code-samples all
+
+    - cp code-samples/DO artifacts/
+  artifacts:
+    # Бинарник передаётся дальше по конвейеру через механизм артефактов,
+    # а не пересобирается в каждой стадии: тесты и доставка должны работать
+    # ровно с тем файлом, который проверила сборка.
+    paths:
+      - artifacts/
+    expire_in: 30 days
+  after_script:
+    - chmod +x scripts/tele.sh
+    - ./scripts/tele.sh
+
+integration_test:
+  stage: test
+  allow_failure: false
+  # needs превращает конвейер в граф: стадия стартует, как только готовы
+  # обе перечисленные задачи, не дожидаясь остальных.
+  needs:
+  - style_code
+  - build_project
+  script:
+    # Права на выполнение не переживают выгрузку артефактов.
+    - chmod +x artifacts/DO
+
+    # Тест 1: num = 1
+    - |
+      output=$(artifacts/DO 1)
+      expected="Learning to Linux"
+      if [[ "$output" == "$expected" ]]; then
+        echo "✅ Тест 1: OK"
+      else
+        echo "❌ Тест 1: ожидалось '$expected', получено: '$output'"
+        exit 1
+      fi
+
+    # Тест 2: num = 6
+    - |
+      output=$(artifacts/DO 6)
+      expected="Learning to CI/CD"
+      if [[ "$output" == "$expected" ]]; then
+        echo "✅ Тест 6: OK"
+      else
+        echo "❌ Тест 6: ожидалось '$expected', получено: '$output'"
+        exit 1
+      fi
+
+    # Тест 3: нет аргумента.
+    # Программа завершается с ненулевым кодом, поэтому подстановка обёрнута
+    # в || true — иначе задача упала бы на самой команде, не дойдя
+    # до сравнения вывода с ожидаемым.
+    - |
+      output=$(artifacts/DO 2>/dev/null) || true
+      expected="Bad number of arguments!"
+      if [[ "$output" == "$expected" ]]; then
+        echo "✅ Тест без аргументов: OK"
+      else
+        echo "❌ Тест без аргументов: ожидалось '$expected', получено: '$output'"
+        exit 1
+      fi
+
+    # Тест 4: неправильное число
+    - |
+      output=$(artifacts/DO 99 2>/dev/null) || true
+      expected="Bad number!"
+      if [[ "$output" == "$expected" ]]; then
+        echo "✅ Тест с неправильным числом: OK"
+      else
+        echo "❌ Тест с неправильным числом: ожидалось '$expected', получено: '$output'"
+        exit 1
+      fi
+  after_script:
+    - chmod +x scripts/tele.sh
+    - ./scripts/tele.sh
+
+deploy:
+  stage: deploy
+  script:
+    - chmod +x scripts/deploy.sh
+    - ./scripts/deploy.sh
+  # Доставка запускается кнопкой, а не автоматически: изменения попадают
+  # на сервер по решению человека, а не по факту зелёного конвейера.
+  when: manual
+  allow_failure: false
+  needs:
+    - style_code
+    - build_project
+    - integration_test
+  after_script:
+    - chmod +x scripts/tele.sh
+    - ./scripts/tele.sh
