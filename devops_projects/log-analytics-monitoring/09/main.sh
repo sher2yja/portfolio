@@ -5,7 +5,7 @@
 # Скрипт раз в 5 секунд перезаписывает файл в формате экспозиции Prometheus:
 # строка HELP с описанием, строка TYPE с типом метрики, затем само значение.
 # Формат намеренно тот же, что у node_exporter, — Prometheus не отличает
-# источник и собирает метрики штатным way.
+# источник и собирает такие метрики наравне со штатными.
 #
 # Тип gauge выбран потому, что все три величины могут и расти, и убывать.
 # Для счётчика, который только растёт, был бы counter.
@@ -15,9 +15,27 @@
 #
 # Запускается в фоне (в режиме демона) и работает, пока его не остановят.
 
-METRICS_DIR="/var/www/metrics"
-sudo mkdir -p "$METRICS_DIR"
-sudo chown $USER:$USER "$METRICS_DIR"
+# Каталог по умолчанию — тот, что раздаёт nginx на отдельном порту.
+# Вынесен в переменную, чтобы скрипт можно было проверить, не создавая
+# системный каталог и не спрашивая пароль:
+#   METRICS_DIR=/tmp/m ./main.sh
+#
+# Прежняя версия делала это безусловно и через sudo:
+#     sudo mkdir -p /var/www/metrics
+#     sudo chown $USER:$USER /var/www/metrics
+# Запуск требовал ввода пароля, а на машине оставался системный каталог,
+# который потом удаляется только через sudo. Здесь каталог создаётся
+# обычными правами: если их не хватает, скрипт скажет об этом и выйдет,
+# а не оставит систему в неожиданном состоянии.
+METRICS_DIR="${METRICS_DIR:-/var/www/metrics}"
+
+if ! mkdir -p "$METRICS_DIR" 2>/dev/null; then
+    echo "Не удалось создать каталог $METRICS_DIR — нет прав." >&2
+    echo "Укажите другой путь: METRICS_DIR=~/metrics $0" >&2
+    echo "Либо подготовьте каталог заранее:" >&2
+    echo "    sudo mkdir -p $METRICS_DIR && sudo chown \"\$USER\" $METRICS_DIR" >&2
+    exit 1
+fi
 
 METRICS_FILE="$METRICS_DIR/metrics.html"
 
@@ -34,6 +52,6 @@ node_sherryja_DISC_SPACE_free_in_bytes $(df -B1 /home | awk 'NR==2{print $4}')
 # TYPE node_sherryja_RAM_free_in_bytes gauge
 node_sherryja_RAM_free_in_bytes $(free -b | awk 'NR==2{print $4}')"
 
-    echo "$metrics" > $METRICS_FILE
+    echo "$metrics" > "$METRICS_FILE"
     sleep 5
 done
