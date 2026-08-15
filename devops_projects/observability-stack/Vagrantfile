@@ -1,0 +1,102 @@
+# Стенд: три виртуальные машины под кластер Docker Swarm — один менеджер
+# и два рабочих узла. Поднимается командой vagrant up из этого каталога.
+#
+# Три машины, а не одна, нужны по существу задания: экспортёры запускаются
+# в режиме global, то есть по экземпляру на узел, и на одиночной машине
+# нечем показать ни разделение метрик по узлам, ни распределение
+# контейнеров по кластеру.
+#
+# По 4 ядра и 4 ГБ памяти на машину: девять контейнеров приложения плюс
+# восемь сервисов мониторинга, из которых Java-микросервисы самые
+# требовательные. Итого стенду нужно порядка 12 ГБ памяти.
+
+Vagrant.configure("2") do |config|
+  BOX       = "ubuntu/jammy64"
+  CPU_COUNT = 4
+  RAM_MB    = 4096
+
+  # Адреса приватной сети. Они же прописаны в prometheus.yml как цели
+  # node_exporter и в скриптах входа в кластер — при изменении правятся
+  # все три места сразу.
+  MANAGER_IP = "192.168.56.10"
+  WORKER1_IP = "192.168.56.11"
+  WORKER2_IP = "192.168.56.12"
+
+  # Каталог проекта виден всем трём машинам по одному пути. На этом держатся
+  # две вещи: compose-файлы с bind-mount'ами конфигов и передача токена входа
+  # в кластер — менеджер кладёт его в scripts/, воркеры оттуда читают.
+  config.vm.synced_folder ".", "/home/vagrant/app"
+
+  # Собственный экспортёр метрик кластера. Общий для всех трёх машин блок:
+  # метрики нужны с каждого узла, а не только с менеджера.
+  config.vm.provision "shell", inline: <<-SHELL, run: "once"
+    # Делаем скрипт исполняемым
+    chmod +x /home/vagrant/app/scripts/swarm-metrics.sh
+
+    # Запускаем один раз, чтобы файл метрик существовал к моменту, когда
+    # node_exporter впервые заглянет в каталог textfile collector
+    sudo /home/vagrant/app/scripts/swarm-metrics.sh
+
+    # Дальше обновление по расписанию, раз в минуту. Через cron, а не через
+    # запуск по запросу: node_exporter только читает готовый файл и ничего
+    # не выполняет, поэтому обновлять его должен кто-то со стороны
+    echo "*/1 * * * * root /home/vagrant/app/scripts/swarm-metrics.sh" | sudo tee /etc/cron.d/swarm-metrics > /dev/null
+
+    # Файлы в /etc/cron.d cron игнорирует, если права на них слишком широкие
+    sudo chmod 644 /etc/cron.d/swarm-metrics
+  SHELL
+  
+  # === Менеджер ===
+  config.vm.define "manager01", primary: true do |m|
+    m.vm.box = BOX
+    m.vm.hostname = "manager01"
+    m.vm.network "private_network", ip: MANAGER_IP
+    # Проброс порта 9000 для Portainer (будет нужно позже)
+    # m.vm.network "forwarded_port", guest: 9000, host: 9000, auto_correct: true
+
+    m.vm.provider "virtualbox" do |vb|
+      vb.cpus   = CPU_COUNT
+      vb.memory = RAM_MB
+    end
+
+    m.vm.provision "shell", path: "scripts/installdocker.sh"
+    m.vm.provision "shell", path: "scripts/manager.sh"
+  end
+
+  # === Worker 1 ===
+  config.vm.define "worker01" do |w|
+    w.vm.box = BOX
+    w.vm.hostname = "worker01"
+    w.vm.network "private_network", ip: WORKER1_IP
+
+    w.vm.provider "virtualbox" do |vb|
+      vb.cpus   = CPU_COUNT
+      vb.memory = RAM_MB
+    end
+
+    w.vm.provision "shell", path: "scripts/installdocker.sh"
+    w.vm.provision "shell", path: "scripts/join.sh"
+  end
+
+  # === Worker 2 ===
+  config.vm.define "worker02" do |w|
+    w.vm.box = BOX
+    w.vm.hostname = "worker02"
+    w.vm.network "private_network", ip: WORKER2_IP
+
+    w.vm.provider "virtualbox" do |vb|
+      vb.cpus   = CPU_COUNT
+      vb.memory = RAM_MB
+    end
+
+    w.vm.provision "shell", path: "scripts/installdocker.sh"
+    w.vm.provision "shell", path: "scripts/join.sh"
+
+    # После полного запуска кластера — запускаем проверку
+    w.trigger.after :up do |t|
+      t.name = "check-swarm"
+      t.info = "Проверка состояния Swarm..."
+      t.run = { inline: "vagrant ssh manager01 -c 'bash /home/vagrant/app/scripts/check-swarm.sh'" }
+    end
+  end
+end

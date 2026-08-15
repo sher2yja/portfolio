@@ -1,0 +1,168 @@
+# Стек наблюдаемого приложения — системы бронирования отелей из семи
+# микросервисов на Spring Boot, Postgres и RabbitMQ. Разворачивается первым,
+# стек мониторинга поднимается поверх него в ту же оверлейную сеть:
+#
+#   docker stack deploy -c docker-compose.yml hotel-app
+#
+# ── Чего в этом репозитории нет ──────────────────────────────────────
+# Каталог services/ — исходный код приложения из поставки учебного курса,
+# он сюда не выложен. На развёртывание это не влияет: docker stack deploy
+# ключ build игнорирует и всегда тянет готовый образ из image, а образы
+# лежат в публичном реестре. Исходники нужны только для docker compose build.
+#
+# Здесь этот файл важен не приложением, а тем, что задаёт наблюдаемую среду:
+# общую сеть, порты, по которым Prometheus ходит за метриками, и точки входа.
+#
+# ── Секреты ──────────────────────────────────────────────────────────
+# Пароли Postgres и RabbitMQ — учебные заглушки локального стенда,
+# не образец рабочей практики.
+
+version: "3.8"
+services:
+    # Единственная точка входа снаружи. Порты остальных сервисов опубликованы
+    # ниже ради отладки, но штатное обращение к приложению идёт сюда.
+    nginx-proxy:
+        image: nginx:alpine
+        ports:
+            - "8081:8081"
+            - "8087:8087"
+        volumes:
+            - ./nginx.conf:/etc/nginx/nginx.conf
+
+        networks:
+            - hotel-overlay-net
+
+    # Тег образа :05 — состояние на момент этой работы. У каждого задания
+    # сквозной линии свой тег, и подтягивать их к общему значению нельзя:
+    # отчёты описывают поведение именно зафиксированной версии.
+    #
+    # Псевдоним в сети задаётся явно, хотя Swarm и так резолвит имя сервиса:
+    # микросервисы ищут друг друга по именам из своей конфигурации, и явный
+    # alias оставляет свободу переименовать сервис, не трогая приложение.
+    session-service:
+        build: "./services/session-service"
+        image: iskstep93/session-service:05
+        networks:
+            hotel-overlay-net:
+                aliases:
+                    - session-service
+        # В Swarm depends_on не действует: порядок запуска не гарантируется,
+        # упавшие на старте сервисы поднимает restart_policy. Ключ оставлен
+        # как описание зависимостей и работает при обычном docker compose up.
+        depends_on:
+            - db
+
+    hotel-service:
+        build: "./services/hotel-service"
+        image: iskstep93/hotel-service:05
+        ports: ["8082:8082"]
+        networks:
+            hotel-overlay-net:
+                aliases:
+                    - hotel-service
+        depends_on:
+            - db
+
+    payment-service:
+        build: "./services/payment-service"
+        image: iskstep93/payment-service:05
+        ports: ["8084:8084"]
+        networks:
+            hotel-overlay-net:
+                aliases:
+                    - payment-service
+        depends_on:
+            - db
+
+    loyalty-service:
+        build: "./services/loyalty-service"
+        image: iskstep93/loyalty-service:04
+        ports: ["8085:8085"]
+        networks:
+            hotel-overlay-net:
+                aliases:
+                    - loyalty-service
+        depends_on:
+            - db
+
+    report-service:
+        build: "./services/report-service"
+        image: iskstep93/report-service:05
+        ports: ["8086:8086"]
+        networks:
+            hotel-overlay-net:
+                aliases:
+                    - report-service
+        depends_on:
+            - db
+            - rabbitmq
+
+    booking-service:
+        build: "./services/booking-service"
+        image: iskstep93/booking-service:05
+        ports: ["8083:8083"]
+        networks:
+            hotel-overlay-net:
+                aliases:
+                    - booking-service
+        depends_on:
+            - db
+            - rabbitmq
+            - payment-service
+            - hotel-service
+            - loyalty-service
+
+    gateway-service:
+        build: "./services/gateway-service"
+        image: iskstep93/gateway-service:05
+        networks:
+            hotel-overlay-net:
+                aliases:
+                    - gateway-service
+        depends_on:
+            - session-service
+            - hotel-service
+            - payment-service
+            - loyalty-service
+            - report-service
+            - booking-service
+
+    # Одна СУБД на все сервисы, по отдельной базе на каждый. Скрипт из
+    # /docker-entrypoint-initdb.d образ Postgres выполняет только при первой
+    # инициализации пустого каталога данных — при повторном запуске он
+    # игнорируется, поэтому создание баз здесь безопасно.
+    #
+    # Сам init.sql приходит с поставкой приложения и в этот репозиторий
+    # не выложен — см. замечание о services/ в шапке файла.
+    db:
+        image: postgres:15.1-alpine
+        volumes:
+            - ./services/database/init.sql:/docker-entrypoint-initdb.d/init.sql
+        environment:
+            POSTGRES_USER: postgres
+            POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        networks:
+            - hotel-overlay-net
+
+    # Очередь между booking-service и report-service: бронирование не ждёт,
+    # пока обновится статистика. Отсюда и пара счётчиков Micrometer —
+    # отправленные и обработанные сообщения: их расхождение показывает,
+    # что потребитель отстаёт или не справляется.
+    #
+    # Тег -management добавляет веб-интерфейс на порту 15672, обычный образ
+    # открывает только 5672 для самого протокола.
+    rabbitmq:
+        image: rabbitmq:3-management-alpine
+        ports:
+            - "5672:5672"
+            - "15672:15672"
+        networks:
+            - hotel-overlay-net
+
+networks:
+    hotel-overlay-net:
+        # Сеть создаётся заранее в scripts/deploy.sh и объявлена внешней:
+        # в неё же приходит стек мониторинга, иначе Prometheus не смог бы
+        # обращаться к микросервисам по именам.
+        external: true

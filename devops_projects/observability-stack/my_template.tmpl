@@ -1,0 +1,25 @@
+{{/*
+  Шаблон оформления уведомлений Alertmanager для Telegram.
+
+  Один шаблон обслуживает и срабатывание, и отбой: Alertmanager вызывает
+  его в обоих случаях, а различает их поле .Status. Без ветки else отбой
+  приходил бы с тем же текстом, что и авария.
+
+  Разметка HTML, а не Markdown: в Markdown пришлось бы экранировать
+  символы, которые встречаются в именах сервисов и текстах ошибок.
+
+  Alertmanager группирует алерты и передаёт в шаблон массив .Alerts.
+  Здесь берётся первый элемент — правила группируются по alertname,
+  так что внутри одной группы описание у всех одинаковое.
+*/}}
+{{ define "telegram.message" }}
+{{ if eq .Status "firing" }}🔥 <b>КРИТИЧЕСКИЙ АЛЕРТ</b>{{ else }}✅ <b>ОТБОЙ</b>{{ end }}
+
+<b>Тип:</b> {{ .GroupLabels.alertname }}
+<b>Описание:</b> {{ (index .Alerts 0).Annotations.summary }}
+<b>Время:</b> {{ (index .Alerts 0).StartsAt.Format "15:04:05" }}
+
+{{ if eq .Status "firing" }}
+<b>Объект:</b> <code>{{ if (index .Alerts 0).Labels.name }}{{ (index .Alerts 0).Labels.name }}{{ else }}{{ (index .Alerts 0).Labels.instance }}{{ end }}</code>
+{{ end }}
+{{ end }}

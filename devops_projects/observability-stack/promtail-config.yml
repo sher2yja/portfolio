@@ -1,0 +1,28 @@
+# Конфигурация Promtail — агента, который читает логи и отправляет их в Loki.
+#
+# Список контейнеров не задан статически: агент обнаруживает их сам через
+# сокет Docker и перечитывает каждые 5 секунд. Благодаря этому логи нового
+# контейнера подхватываются без правки конфигурации и перезапуска агента.
+#
+# Правило relabel отрезает ведущий слеш от имени контейнера: Docker отдаёт
+# имена в виде /booking-service, и без этой обработки метка выглядела бы
+# в Grafana как «/booking-service».
+
+server:
+  http_listen_port: 9080
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  - job_name: docker_logs
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 5s
+    relabel_configs:
+      - source_labels: ['__meta_docker_container_name']
+        regex: '/(.*)'
+        target_label: 'container'
