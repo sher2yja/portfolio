@@ -1,0 +1,302 @@
+# Стек мониторинга. Разворачивается отдельно от стека приложения, но в ту же
+# оверлейную сеть — иначе Prometheus не достучался бы до микросервисов:
+#
+#   docker stack deploy -c docker-compose.monitoring.yml monitoring
+#
+# Кто за что отвечает:
+#   prometheus         — опрашивает цели, хранит ряды, считает правила алертов
+#   node-exporter      — метрики самих машин: CPU, память, диски, сеть
+#   cAdvisor           — метрики контейнеров с метками Docker и Swarm
+#   blackbox-exporter  — проверка доступности адресов снаружи
+#   loki + promtail    — сбор и хранение логов контейнеров
+#   grafana            — дашборды поверх Prometheus и Loki
+#   alertmanager       — рассылка сработавших алертов в почту и Telegram
+#
+# ── Два способа доставки конфигов, и это не случайность ───────────────
+# Часть сервисов получает свой конфиг через volumes (bind-mount с диска
+# машины), часть — через configs (содержимое хранится в самом Swarm и
+# раздаётся на узлы). Разница проявляется при развёртывании на нескольких
+# машинах: bind-mount требует, чтобы файл физически лежал на том узле, куда
+# попал контейнер. Для сервисов, закреплённых за менеджером, это допустимо;
+# для promtail с mode: global — нет, он запускается на всех трёх машинах.
+# Поэтому promtail, loki и alertmanager используют configs.
+#
+# ── Замечание по безопасности ────────────────────────────────────────
+# Grafana открыта анонимно с правами администратора, cAdvisor работает
+# в privileged. Это допустимо для локального стенда из трёх виртуальных
+# машин и недопустимо нигде больше.
+
+version: "3.8"
+
+services:
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+        # В Swarm опубликованный порт доступен на любом узле кластера
+        # независимо от того, где запущен контейнер: входящий трафик
+        # разводит внутренний балансировщик (routing mesh).
+        - "9090:9090"
+    volumes:
+      # Bind-mount: файлы берутся из папки проекта, смонтированной Vagrant'ом
+      # на все три машины. Оба файла кладутся в один каталог намеренно —
+      # относительный путь в rule_files разрешается от каталога конфига.
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./prometheus/alert.rules.yml:/etc/prometheus/alert.rules.yml
+    networks:
+        - hotel-overlay-net
+    deploy:
+        placement:
+            constraints:
+                # Привязка к менеджеру: база рядов Prometheus лежит в локальном
+                # томе узла, и переезд контейнера на другую машину означал бы
+                # потерю накопленной истории.
+                - node.role == manager
+        restart_policy:
+            condition: on-failure
+
+  loki:
+    image: grafana/loki:latest
+    volumes:
+      - loki-data:/loki
+    ports:
+      - "3100:3100"
+    command: -config.file=/etc/loki/loki-config.yml
+    networks:
+      - hotel-overlay-net
+    configs:
+      - source: loki_config
+        target: /etc/loki/loki-config.yml
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          # По той же причине, что и Prometheus: хранилище логов локальное.
+          - node.role == manager
+      restart_policy:
+        condition: on-failure
+
+  promtail:
+    image: grafana/promtail:latest
+    volumes:
+      # Логи контейнеров Docker пишет на диск узла, поэтому агент должен
+      # видеть их каталог. Сокет нужен, чтобы promtail сам находил контейнеры
+      # и подтягивал их имена в метки — без него логи пришли бы обезличенными.
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Позиции чтения переживают перезапуск: без этого тома агент после
+      # рестарта отправил бы в Loki все накопленные логи заново.
+      - promtail-data:/tmp
+    command: -config.file=/etc/promtail/promtail-config.yml
+    networks:
+      - hotel-overlay-net
+    configs:
+      - source: promtail_config
+        target: /etc/promtail/promtail-config.yml
+    deploy:
+      # global — по одному экземпляру на каждой машине кластера. Агент сбора
+      # логов обязан быть локальным: он читает файлы своего узла.
+      mode: global
+      restart_policy:
+        condition: on-failure
+
+  grafana:
+    environment:
+      - GF_PATHS_PROVISIONING=/etc/grafana/provisioning
+      # Вход без пароля с правами администратора — только для локального стенда.
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - GF_FEATURE_TOGGLES_ENABLE=alertingSimplifiedRouting,alertingQueryAndExpressionsStepMode
+    # Подмена entrypoint: источник данных описывается файлом до старта Grafana,
+    # чтобы после развёртывания не добавлять его руками через интерфейс.
+    # Файл создаётся прямо здесь, потому что положить его bind-mount'ом мешает
+    # тот же аргумент, что и у promtail, — путь должен существовать на узле.
+    #
+    # В url указан адрес менеджера, а не имя сервиса loki: обращение идёт
+    # на опубликованный наружу порт. Внутри оверлейной сети сработало бы и
+    # http://loki:3100 — loki закреплён за менеджером, так что оба варианта
+    # ведут на один и тот же контейнер.
+    #
+    # Ниже — тело скрипта, а не YAML: комментарии внутри него попали бы
+    # в генерируемый ds.yaml, поэтому пояснения вынесены сюда.
+    entrypoint:
+      - sh
+      - -euc
+      - |
+        mkdir -p /etc/grafana/provisioning/datasources
+        cat <<EOF > /etc/grafana/provisioning/datasources/ds.yaml
+        apiVersion: 1
+        datasources:
+        - name: Loki
+          type: loki
+          access: proxy
+          orgId: 1
+          url: http://192.168.56.10:3100
+          basicAuth: false
+          isDefault: true
+          version: 1
+          editable: false
+        EOF
+        /run.sh
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    networks:
+      - hotel-overlay-net
+    volumes:
+      # Дашборды и настройки живут здесь. Том локальный, отсюда привязка
+      # к менеджеру ниже — иначе после переезда контейнера дашборды исчезнут.
+      - grafana-data:/var/lib/grafana
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      restart_policy:
+        condition: on-failure
+
+  node-exporter:
+    image: prom/node-exporter:latest
+    ports:
+      - "9100:9100"
+    networks:
+      - hotel-overlay-net
+    volumes:
+      # Экспортёр читает показатели ядра из /proc и /sys. В контейнере они
+      # свои собственные, поэтому файловые системы хоста монтируются отдельно
+      # и на них переключают через --path.* ниже.
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+      # Каталог, куда пишет scripts/swarm-metrics.sh. Содержимое лежащих здесь
+      # файлов node_exporter отдаёт вместе со своими метриками — так работает
+      # собственный экспортёр без единой строки кода HTTP-сервера.
+      - /var/lib/node_exporter/textfile_collector:/textfile:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      - '--path.rootfs=/rootfs'
+      - '--collector.textfile.directory=/textfile'
+      # Удвоенный доллар — это экранирование для Compose, а не опечатка.
+      # Одиночный $ Compose принял бы за начало подстановки переменной
+      # и вырезал бы из регулярного выражения якорь конца строки.
+      - '--collector.filesystem.ignored-mount-points=^/(sys|proc|dev|host|etc)($$|/)'
+      # Отсечение служебных файловых систем: без него метрики места на диске
+      # тонут среди десятков overlay- и tmpfs-точек монтирования, которые
+      # создаёт сам Docker.
+      - '--collector.filesystem.ignored-fs-types=^(autofs|binfmt_misc|bpf|cgroup2?|configfs|debugfs|devpts|devtmpfs|fusectl|hugetlbfs|iso9660|mqueue|nsfs|overlay|proc|procfs|pstore|rpc_pipefs|securityfs|selinuxfs|squashfs|sysfs|tracefs|vboxsf)$$'
+    deploy:
+      # global — метрики нужны с каждой машины, а не с одной случайной.
+      mode: global
+      restart_policy:
+        condition: on-failure
+
+  blackbox-exporter:
+    image: prom/blackbox-exporter:latest
+    ports:
+      - 9115:9115
+    volumes:
+      - ./blackbox.yml:/etc/blackbox_exporter/config.yml:ro
+    command:
+      - '--config.file=/etc/blackbox_exporter/config.yml'
+    networks:
+      - hotel-overlay-net
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      restart_policy:
+        condition: on-failure
+
+  cAdvisor:
+    image: gcr.io/cadvisor/cadvisor:latest
+    ports:
+      - "8080:8080"
+    user: root  # ← Обязательно для доступа к /var/lib/docker
+    privileged: true  # ← Дать полные права для работы с cgroups и overlayfs
+    volumes:
+      - /:/rootfs:ro
+      # Единственный том, смонтированный на запись: cAdvisor обращается
+      # к сокету Docker в /var/run, чтобы читать метки контейнеров.
+      - /var/run:/var/run:rw
+      - /sys:/sys:ro
+      - /var/lib/docker:/var/lib/docker:ro
+      - /dev/disk:/dev/disk:ro
+      # Учёт CPU и памяти ведёт ядро через cgroups — отсюда и берутся цифры.
+      - /sys/fs/cgroup:/sys/fs/cgroup:ro
+    command:
+      - '--housekeeping_interval=30s'
+      # Без этого флага метки Docker в метрики не попадают, а на них держится
+      # половина дашборда: нагрузка по сервисам и подсчёт стеков считаются
+      # по container_label_com_docker_swarm_service_name и ..._stack_namespace.
+      - '--store_container_labels=true'
+      # Только контейнеры Docker: иначе в выдачу идут все cgroups системы,
+      # включая службы systemd самой машины.
+      - '--docker_only'
+      # Отключение групп метрик, которые в этом стенде не нужны. cAdvisor
+      # заметно нагружает узел, и сокращение набора — самый простой способ
+      # снизить его аппетит.
+      - '--disable_metrics=advtcp,cpu_topology,cpuset,hugetlb,memory_numa,process,referenced_memory,resctrl,sched,tcp,udp'
+    networks:
+      - hotel-overlay-net
+    deploy:
+      mode: global
+      restart_policy:
+        condition: on-failure
+
+  alertmanager:
+    image: prom/alertmanager:latest
+    ports:
+      - 9093:9093
+    configs:
+      - source: alertmanager_config_v1
+        target: /etc/alertmanager/alertmanager.yml
+      - source: alertmanager_template_v1
+        target: /etc/alertmanager/my_template.tmpl
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+    networks:
+      - hotel-overlay-net
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      restart_policy:
+        condition: on-failure
+
+networks:
+    hotel-overlay-net:
+        # Сеть создаётся заранее скриптом scripts/deploy.sh и объявлена внешней.
+        # Если бы её создавал стек, у стека приложения и стека мониторинга
+        # получились бы две разные сети и Prometheus не увидел бы микросервисы.
+        external: true
+
+# Содержимое этих файлов Swarm хранит у себя и раздаёт на узлы сам.
+#
+# Объекты config неизменяемы: поменять содержимое существующего нельзя,
+# нужно создать новый под другим именем и переключить сервис на него.
+# Отсюда суффикс _v1 — место под следующую версию конфигурации.
+configs:
+  promtail_config:
+    file: ./promtail-config.yml
+  loki_config:
+    file: ./loki-config.yml
+  alertmanager_config_v1:
+    file: ./alertmanager.yml
+  alertmanager_template_v1:
+    file: ./my_template.tmpl
+
+# Тома локальные для узла — все три сервиса, которые ими пользуются,
+# закреплены за менеджером именно поэтому.
+volumes:
+  loki-data:
+    driver: local
+  promtail-data:
+    driver: local
+  grafana-data:
+    driver: local

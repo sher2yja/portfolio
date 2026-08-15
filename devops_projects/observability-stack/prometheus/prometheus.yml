@@ -1,0 +1,118 @@
+# Конфигурация Prometheus: что опрашивать, как часто и куда слать алерты.
+#
+# Prometheus работает по модели pull — сам ходит по целям и забирает метрики.
+# Приложение не отправляет их никуда, а лишь держит открытым HTTP-эндпоинт,
+# поэтому недоступный Prometheus не влияет на работу микросервисов.
+
+global:
+  scrape_interval: 15s      # как часто опрашивать цели по умолчанию
+  evaluation_interval: 15s  # как часто пересчитывать правила из rule_files
+  scrape_timeout: 10s       # сколько ждать ответа цели; должен быть меньше scrape_interval
+
+# Путь относительный. Prometheus разрешает его от каталога, в котором лежит
+# сам конфиг, а не от рабочего каталога процесса, — оба файла монтируются
+# в /etc/prometheus, поэтому правила находятся.
+rule_files:
+  - "alert.rules.yml"
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          # Обращение по имени сервиса: внутри оверлейной сети Swarm
+          # встроенный DNS резолвит имена сервисов в их виртуальные адреса.
+          - alertmanager:9093
+
+scrape_configs:
+  # ── Метрики приложения ──────────────────────────────────────────────
+  # Четыре из семи микросервисов отдают собственные счётчики, собранные
+  # через Micrometer. Путь /actuator/prometheus открывает Spring Boot
+  # Actuator, когда в проект добавлена зависимость micrometer-registry-prometheus.
+  #
+  # Интервал опроса здесь чаще общего (5 с против 15 с): счётчики приложения
+  # меняются рывками от действий пользователя, и при редком опросе короткие
+  # всплески на графике не видны.
+  - job_name: 'gateway-service'
+    metrics_path: '/actuator/prometheus'
+    scrape_interval: 5s
+    static_configs:
+      - targets: ['gateway-service:8087']
+
+  - job_name: 'session-service'
+    metrics_path: '/actuator/prometheus'
+    scrape_interval: 5s
+    static_configs:
+      - targets: ['session-service:8081']
+
+  - job_name: 'booking-service'
+    metrics_path: '/actuator/prometheus'
+    scrape_interval: 5s
+    static_configs:
+      - targets: ['booking-service:8083']
+
+  - job_name: 'report-service'
+    metrics_path: '/actuator/prometheus'
+    scrape_interval: 5s
+    static_configs:
+      - targets: ['report-service:8086']
+
+  # ── Метрики узлов ───────────────────────────────────────────────────
+  # Здесь адреса, а не имена сервисов: node_exporter запущен в режиме global,
+  # то есть по одному экземпляру на каждой машине. Обращение по имени сервиса
+  # балансировалось бы между ними, и Prometheus видел бы одну цель вместо
+  # трёх, теряя разделение метрик по узлам.
+  #
+  # Этот же job отдаёт метрики собственного экспортёра из scripts/swarm-metrics.sh:
+  # node_exporter подмешивает к своим метрикам содержимое файлов из каталога
+  # textfile collector.
+  - job_name: 'node_exporter'
+    static_configs:
+      - targets:
+          - '192.168.56.10:9100'  # manager
+          - '192.168.56.11:9100'  # worker 1
+          - '192.168.56.12:9100'  # worker 2
+        labels:
+          # Общая метка для всех трёх узлов — по ней можно отделить метрики
+          # этого кластера, если в Prometheus появятся другие источники.
+          cluster: 'hotel-swarm'
+
+  # ── Проверка доступности снаружи ────────────────────────────────────
+  # blackbox_exporter проверяет цель не изнутри, а «чёрным ящиком»: делает
+  # HTTP-запрос и сообщает, ответила ли она. Схема обращения нестандартная —
+  # Prometheus опрашивает не саму цель, а экспортёр, передавая ей адрес цели
+  # параметром. Этим и занимаются три правила relabel_configs ниже:
+  #
+  #   1. адрес цели из targets кладётся в параметр запроса ?target=
+  #   2. он же остаётся меткой instance, иначе на графиках все проверки
+  #      выглядели бы как обращения к одному blackbox-exporter:9115
+  #   3. фактическим адресом опроса становится сам экспортёр
+  #
+  # Без третьего правила Prometheus пошёл бы напрямую на google.com и получил
+  # HTML вместо метрик.
+  - job_name: 'blackbox_exporter'
+    metrics_path: '/probe'
+    params:
+      module: [http_2xx]   # какой из модулей blackbox.yml применить
+    static_configs:
+      - targets:
+        - http://gateway-service:8087/actuator/health
+        - https://www.google.com
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115
+
+  # ── Метрики контейнеров ─────────────────────────────────────────────
+  # cAdvisor отдаёт потребление CPU, памяти и сети по каждому контейнеру
+  # вместе с метками Docker: имя сервиса Swarm и имя стека. По ним считаются
+  # нагрузка по сервисам и количество стеков на дашборде.
+  #
+  # Имя job'а с заглавной буквой — так же, как назван сервис в compose-файле.
+  # Значение попадает в метку job, и запросы в дашборде ссылаются именно
+  # на такое написание: job="cAdvisor".
+  - job_name: 'cAdvisor'
+    static_configs:
+      - targets: ['cAdvisor:8080']
