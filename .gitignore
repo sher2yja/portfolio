@@ -17,6 +17,13 @@ kubeconfig*
 *.out
 artifacts/
 
+# Артефакты прогона скриптов DO4: песочница заполнения диска, журналы,
+# сгенерированные логи nginx и HTML-отчёт goaccess
+devops_projects/log-analytics-monitoring/02/sandbox/
+devops_projects/log-analytics-monitoring/02/log.txt
+devops_projects/log-analytics-monitoring/04/*.log
+devops_projects/log-analytics-monitoring/06/report.html
+
 # Системное
 .DS_Store
 *.swp
