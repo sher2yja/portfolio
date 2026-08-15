@@ -8,7 +8,7 @@
 
 | Проект | О чём | Технологии |
 |---|---|---|
-| [Выборки по базе пиццерий](./pizzeria-sql-basics) | Десять запросов к базе из пяти связанных таблиц. Фильтрация, вычисляемые поля, `CASE`, подзапросы в `SELECT` и `FROM`. Часть заданий запрещает `JOIN` и `IN`, поэтому таблицы связываются вручную | PostgreSQL, ANSI SQL, Bash |
+| [Выборки по базе пиццерий](./pizzeria-sql-basics) | Десять запросов к базе из пяти связанных таблиц. Фильтрация, вычисляемые поля, `CASE`, подзапросы в `SELECT` и `FROM`. Часть заданий запрещает `JOIN` и `IN`, поэтому таблицы связываются вручную | ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?style=flat-square&logo=postgresql&logoColor=white) ![ANSI SQL](https://img.shields.io/badge/ANSI%20SQL-336791?style=flat-square) ![Bash](https://img.shields.io/badge/Bash-4EAA25?style=flat-square&logo=gnu-bash&logoColor=white) |
 
 ---
 
