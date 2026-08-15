@@ -1,0 +1,55 @@
+# Часть 1. Стенд: управляющая машина и два узла.
+#
+#   manager  192.168.56.10   отсюда запускается Ansible
+#   node01   192.168.56.11   микросервисы в Docker
+#   node02   192.168.56.12   Apache и PostgreSQL
+#
+# Ресурсы распределены неравномерно и намеренно: node01 получает 4 ГБ,
+# потому что на нём поднимается всё приложение сразу; менеджеру достаточно
+# 1.5 ГБ — он только рассылает задачи по SSH и ничего не выполняет у себя.
+#
+# Проброс портов сделан на узлы, а не на менеджер: проверять результат
+# удобнее с хоста, не заходя внутрь стенда.
+
+Vagrant.configure("2") do |config|
+  config.vm.box = "ubuntu/jammy64" 
+  config.vm.provider "virtualbox" do |vb|
+    vb.memory = "1024"
+    vb.cpus = 1
+  end
+
+  config.vm.define "manager" do |manager|
+    manager.vm.hostname = "manager"
+    manager.vm.network "private_network", ip: "192.168.56.10"
+    manager.vm.provider "virtualbox" do |vb|
+      vb.memory = "1536"
+      vb.cpus = 2
+    end
+  end
+
+  config.vm.define "node01" do |node01|
+    node01.vm.hostname = "node01"
+    node01.vm.network "private_network", ip: "192.168.56.11"
+    # проброс портов с node01 на хост (localhost)
+    # auto_correct: true - если порт занят, Vagrant сам выберет другой
+    node01.vm.network "forwarded_port", guest: 8080, host: 8080, auto_correct: true
+    node01.vm.network "forwarded_port", guest: 8081, host: 8081, auto_correct: true
+    node01.vm.network "forwarded_port", guest: 8087, host: 8087, auto_correct: true
+    node01.vm.provider "virtualbox" do |vb|
+      vb.memory = "4096"
+      vb.cpus = 2
+    end  
+  end
+
+  config.vm.define "node02" do |node02|
+    node02.vm.hostname = "node02"
+    node02.vm.network "private_network", ip: "192.168.56.12"
+    # Пробросим порты для Apache (80) и PostgreSQL (5432)
+    node02.vm.network "forwarded_port", guest: 80, host: 8088, auto_correct: true
+    node02.vm.network "forwarded_port", guest: 5432, host: 5432, auto_correct: true
+    node02.vm.provider "virtualbox" do |vb|
+      vb.memory = "2048" 
+      vb.cpus = 1
+    end
+  end
+end

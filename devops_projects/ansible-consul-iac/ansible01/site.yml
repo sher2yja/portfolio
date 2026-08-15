@@ -1,0 +1,25 @@
+# Часть 1, точка входа. Запуск: ansible-playbook -i inventory site.yml
+#
+# Разбит на два play, потому что узлы получают разные наборы ролей.
+# На node02 порядок ролей значим: apache ставится до postgres, и обе
+# они меняют состояние системы, поэтому перечислены явно, а не в цикле.
+#
+# become: true на уровне play, а не отдельных задач: почти каждая задача
+# здесь ставит пакеты или правит конфигурацию системы.
+#
+# Это переработанная версия развёртывания. Первый вариант — плоский
+# плейбук deploy_node01.yaml, он оставлен рядом как история решения.
+
+---
+- name: Deploy application on node01
+  hosts: node01
+  become: true
+  roles:
+    - application
+
+- name: Deploy Apache and PostgreSQL on node02
+  hosts: node02
+  become: true
+  roles:
+    - apache
+    - postgres

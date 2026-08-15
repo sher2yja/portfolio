@@ -1,0 +1,39 @@
+---
+- name: Apt | Update apt cache
+  apt:
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Install Apache2
+  apt:
+    name: apache2
+    state: present
+
+- name: Ensure Apache2 service is enabled and started
+  service:
+    name: apache2
+    enabled: true
+    state: started
+
+- name: Create custom index.html
+  copy:
+    content: |
+      <html>
+        <head><title>Apache Server on node02</title></head>
+        <body>
+          <h1>Apache is running on node02!</h1>
+          <p>This server was configured via Ansible role.</p>
+          <p>Проверка</p>
+        </body>
+      </html>
+    dest: /var/www/html/index.html
+    owner: www-data
+    group: www-data
+    mode: "0644"
+
+- name: Open port 80 in firewall (if ufw installed)
+  ufw:
+    rule: allow
+    port: 80
+    proto: tcp
+  ignore_errors: yes

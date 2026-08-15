@@ -1,0 +1,54 @@
+# Часть 2. Стенд под Service Discovery: четыре машины.
+#
+#   manager        192.168.56.19   Ansible и сборка JAR
+#   consul-server  192.168.56.20   сервер Consul, интерфейс на 8500
+#   api            192.168.56.21   hotel-service и клиент Consul
+#   db             192.168.56.22   PostgreSQL и клиент Consul
+#
+# Адреса начинаются с .19, а не с .10 как в части 1: стенды независимы
+# и могут существовать одновременно, не отбирая друг у друга адреса.
+#
+# Сборка JAR идёт на менеджере, а не на api. Так на целевой узел не нужно
+# ставить JDK и Maven — туда уезжает только готовый артефакт.
+
+Vagrant.configure("2") do |config|
+  config.vm.box = "ubuntu/jammy64"
+  config.vm.provider "virtualbox" do |vb|
+    vb.memory = "1024"
+    vb.cpus = 2
+  end
+
+  config.vm.define "manager" do |m|
+    m.vm.hostname = "manager"
+    m.vm.network "private_network", ip: "192.168.56.19"
+    m.vm.provider "virtualbox" do |vb|
+      vb.name = "manager-vm"
+      vb.memory = "1536"
+    end
+  end
+
+  config.vm.define "consul-server" do |cs|
+    cs.vm.hostname = "consul-server"
+    cs.vm.network "private_network", ip: "192.168.56.20"
+    cs.vm.network "forwarded_port", guest: 8500, host: 8500, auto_correct: true
+  end
+
+  config.vm.define "api" do |a|
+    a.vm.hostname = "api"
+    a.vm.network "private_network", ip: "192.168.56.21"
+    a.vm.network "forwarded_port", guest: 8082, host: 8082, auto_correct: true
+    a.vm.provider "virtualbox" do |vb|
+      vb.name = "api-vm"
+      vb.memory = "2048"
+    end
+  end
+
+  config.vm.define "db" do |d|
+    d.vm.hostname = "db"
+    d.vm.network "private_network", ip: "192.168.56.22"
+    d.vm.provider "virtualbox" do |vb|
+      vb.name = "db-vm"
+      vb.memory = "2048"
+    end
+  end
+end

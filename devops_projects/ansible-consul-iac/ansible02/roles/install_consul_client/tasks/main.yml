@@ -1,0 +1,137 @@
+---
+- name: Install dependencies
+  apt:
+    name: ["unzip", "curl"]
+    state: present
+    update_cache: yes
+
+- name: Create Consul directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - /opt/consul
+    - /opt/consul/data
+    - /etc/consul.d
+
+- name: Copy Consul client config
+  copy:
+    src: ../../../consul01/consul_client.hcl
+    dest: /etc/consul.d/consul.hcl
+    mode: "0644"
+
+# === Consul ===
+- name: Ensure Consul ZIP exists on manager
+  stat:
+    path: /tmp/consul.zip
+  delegate_to: localhost
+  run_once: true
+  register: consul_zip
+
+- name: Fail if Consul ZIP missing
+  assert:
+    that: consul_zip.stat.exists
+    fail_msg: "Consul ZIP not found on manager"
+
+- name: Copy Consul ZIP to client
+  copy:
+    src: /tmp/consul.zip
+    dest: /tmp/consul.zip
+    mode: "0644"
+
+- name: Unzip Consul
+  unarchive:
+    src: /tmp/consul.zip
+    dest: /usr/local/bin
+    remote_src: yes
+    mode: "0755"
+
+# === Envoy ===
+- name: Ensure Envoy binary exists on manager
+  stat:
+    path: /usr/local/bin/envoy
+  delegate_to: localhost
+  run_once: true
+  register: envoy_bin
+
+- name: Fail if Envoy missing
+  assert:
+    that: envoy_bin.stat.exists
+    fail_msg: "Envoy not found on manager at /usr/local/bin/envoy"
+
+- name: Copy Envoy binary to client
+  copy:
+    src: /usr/local/bin/envoy
+    dest: /usr/local/bin/envoy
+    mode: "0755"
+
+# === Service JSON ===
+- name: Copy service JSON (api only)
+  copy:
+    src: ../../../consul01/hotel.json
+    dest: /etc/consul.d/hotel.json
+    mode: "0644"
+  when: inventory_hostname == "api"
+
+- name: Copy service JSON (db only)
+  copy:
+    src: ../../../consul01/postgres.json
+    dest: /etc/consul.d/postgres.json
+    mode: "0644"
+  when: inventory_hostname == "db"
+
+- name: Create Consul client systemd unit
+  copy:
+    content: |
+      [Unit]
+      Description=Consul Client
+      After=network.target
+      [Service]
+      ExecStart=/usr/local/bin/consul agent -config-dir=/etc/consul.d -data-dir=/opt/consul
+      Restart=on-failure
+      User=root
+      [Install]
+      WantedBy=multi-user.target
+    dest: /etc/systemd/system/consul.service
+    mode: "0644"
+
+- name: Create consul-envoy@.service template
+  copy:
+    content: |
+      [Unit]
+      Description=Consul Envoy sidecar for %i
+      After=consul.service
+      Requires=consul.service
+      [Service]
+      ExecStart=/usr/local/bin/consul connect envoy -sidecar-for %i -envoy-binary /usr/local/bin/envoy -ignore-envoy-compatibility
+      Restart=on-failure
+      [Install]
+      WantedBy=multi-user.target
+    dest: /etc/systemd/system/consul-envoy@.service
+    mode: "0644"
+
+- name: Start Consul client
+  systemd:
+    name: consul
+    enabled: yes
+    state: started
+    daemon_reload: yes
+
+- name: Reload Consul config
+  command: consul reload
+  changed_when: true
+
+- name: Start Envoy sidecar for hotel (api)
+  systemd:
+    name: consul-envoy@hotel
+    enabled: yes
+    state: started
+  when: inventory_hostname == "api"
+
+- name: Start Envoy sidecar for postgres (db)
+  systemd:
+    name: consul-envoy@postgres
+    enabled: yes
+    state: started
+  when: inventory_hostname == "db"
