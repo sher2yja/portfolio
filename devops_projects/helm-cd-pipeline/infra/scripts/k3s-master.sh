@@ -26,5 +26,9 @@ mkdir -p /home/vagrant/.kube
 cp /etc/rancher/k3s/k3s.yaml /home/vagrant/.kube/config
 chown -R vagrant:vagrant /home/vagrant/.kube
 if ! grep -q "KUBECONFIG" /home/vagrant/.bashrc; then
+  # Одинарные кавычки здесь обязательны: в .bashrc должна попасть строка
+  # с буквальным $HOME, который раскроется при входе пользователя. С
+  # двойными кавычками туда записался бы путь, раскрытый от имени root.
+  # shellcheck disable=SC2016
   echo 'export KUBECONFIG=$HOME/.kube/config' >> /home/vagrant/.bashrc
 fi

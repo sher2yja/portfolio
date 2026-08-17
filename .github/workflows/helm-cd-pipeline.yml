@@ -70,10 +70,20 @@ jobs:
 
       - name: shellcheck по скриптам
         run: |
-          # wait-for-it.sh — сторонний скрипт, к нему применяем только
-          # проверку на ошибки, а не полный набор стилевых замечаний.
+          # Свои скрипты — полным набором правил, включая info.
           shellcheck "$PROJECT_DIR"/infra/scripts/*.sh
-          shellcheck --severity=error "$PROJECT_DIR"/docker/wait-for-it.sh
+
+          # wait-for-it.sh взят как есть из upstream, поэтому только уровень
+          # error: стилевые замечания к чужому релизу исправлять негде.
+          #
+          # SC2260 исключено осознанно. Правило срабатывает на строке
+          #   if timeout &>/dev/stdout | grep -q -e '-t '
+          # которой скрипт выясняет, понимает ли timeout из busybox флаг -t.
+          # В конвейере команд /dev/stdout — это и есть пишущий конец канала,
+          # так что перенаправление не подменяет его, а сливает туда stderr,
+          # то есть работает именно так, как задумано автором.
+          shellcheck --severity=error --exclude=SC2260 \
+            "$PROJECT_DIR"/docker/wait-for-it.sh
 
       - name: helm lint
         run: helm lint "$CHART_DIR"
