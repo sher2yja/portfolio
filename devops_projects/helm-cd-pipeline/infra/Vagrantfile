@@ -9,13 +9,27 @@
 #   k3s-master — control-plane и само приложение;
 #   k3s-worker — второй узел, чтобы поды раскладывались, а не жили на одном.
 #
-# Память по 2 ГБ на узел. В такой бюджет семь Spring Boot по умолчанию
-# не помещаются, поэтому ужимаются не машины, а приложения: в ConfigMap
-# чарта прописан JAVA_TOOL_OPTIONS с -Xmx192m, а requests/limits заданы
-# в helm/myapp/values.yaml.
+# Память по 3 ГБ на узел, и третий гигабайт здесь не «на всякий случай».
+# Бюджет посчитан по замерам, а не на глаз:
+#
+#   Ubuntu 22.04 и k3s         600-800 Ми на узел
+#   приложение (kubectl top)  ~1240 Ми на девять подов
+#   стек мониторинга           ~650 Ми (Prometheus, Grafana, Loki,
+#                              Alertmanager и два DaemonSet'а)
+#
+# В два узла по 2 ГБ это помещается впритык и без запаса на пик: семь JVM
+# стартуют одновременно, и в момент разогрева каждая занимает заметно
+# больше своей полки. Отдельно мешают одиночные компоненты мониторинга —
+# их requests должны лечь на ОДИН из двух узлов поверх уже разложенного
+# приложения, и при неудачной раскладке Prometheus встаёт в Pending
+# с Insufficient memory вместо того, чтобы переехать.
+#
+# Ужимать приложения при этом продолжаем: JAVA_TOOL_OPTIONS с -Xmx192m
+# задан в ConfigMap чарта, requests/limits — в helm/myapp/values.yaml.
+# Одно другого не отменяет.
 #
 # Подсеть 192.168.60.0/24 выбрана свободной: 192.168.122.0/24 занимает
-# сеть default у libvirt.
+# сеть default у libvirt, 192.168.121.0/24 — служебная сеть vagrant-libvirt.
 
 MASTER_IP = "192.168.60.10"
 WORKER_IP = "192.168.60.11"
@@ -31,8 +45,8 @@ Vagrant.configure("2") do |config|
   config.vm.synced_folder ".", "/vagrant"
 
   nodes = {
-    "k3s-master" => { ip: MASTER_IP, mem: 2048, cpus: 2 },
-    "k3s-worker" => { ip: WORKER_IP, mem: 2048, cpus: 2 }
+    "k3s-master" => { ip: MASTER_IP, mem: 3072, cpus: 2 },
+    "k3s-worker" => { ip: WORKER_IP, mem: 3072, cpus: 2 }
   }
 
   nodes.each do |name, cfg|
