@@ -146,7 +146,24 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: chart
-          path: dist/
+          path: artifact/
+
+      - name: найти пакет чарта
+        run: |
+          # Поиск, а не готовый путь. Артефакт собирался из двух путей
+          # (dist/*.tgz и rendered.yaml), поэтому внутри сохранился общий
+          # корень с каталогом dist/, и пакет оказывается на уровень глубже,
+          # чем ожидаешь. Раньше здесь стоял glob dist/myapp-*.tgz: он молча
+          # не раскрывался, и helm принимал саму строку за ссылку вида
+          # репозиторий/чарт — отсюда невнятное "Error: repo dist not found".
+          CHART_PKG=$(find artifact -name 'myapp-*.tgz' -type f | head -1)
+          if [ -z "$CHART_PKG" ]; then
+            echo "::error::пакет чарта не найден в артефакте"
+            find artifact -type f
+            exit 1
+          fi
+          echo "CHART_PKG=$CHART_PKG" >> "$GITHUB_ENV"
+          echo "ставим пакет: $CHART_PKG"
 
       # Анонимный лимит Docker Hub — сто обращений за шесть часов на адрес,
       # а раннеры GitHub сидят за общими адресами, так что семь образов подряд
@@ -235,7 +252,7 @@ jobs:
 
       - name: установка релиза
         run: |
-          helm upgrade --install myapp dist/myapp-*.tgz \
+          helm upgrade --install myapp "$CHART_PKG" \
             -n "$NAMESPACE" --create-namespace \
             -f "$CHART_DIR/values-ci.yaml" \
             --set-string secret.data.POSTGRES_PASSWORD="$PG_PASS" \
