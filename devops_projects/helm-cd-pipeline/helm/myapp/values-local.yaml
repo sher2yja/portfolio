@@ -5,9 +5,20 @@
 # из браузера хоста, поэтому у Ingress появляется имя. Добавьте его в
 # /etc/hosts хоста, указав на адрес мастера:
 #   192.168.60.10  myapp.local
+#
+# Без этой записи правило Ingress не сработает: контроллер сверяет заголовок
+# Host, и обращение по адресу узла вернёт 404, а не приложение. Если править
+# /etc/hosts нельзя (нет sudo), обе проверки делаются без него:
+#   curl -H 'Host: myapp.local' http://192.168.60.10/api/v1/gateway/hotels
+#   docker run --rm --add-host myapp.local:192.168.60.10 \
+#     -v "$PWD/tests":/etc/newman postman/newman:6-alpine \
+#     run application_tests.postman_collection.json \
+#     -e application_tests.postman_environment.json \
+#     --env-var API_HOST=http://myapp.local --env-var USERS_PORT=80 \
+#     --env-var GATEWAY_PORT=80
 ingress:
   host: myapp.local
 
-# На стенде процессор не в дефиците, а память — да (по 2 ГБ на узел),
+# На стенде процессор не в дефиците, а память — да (по 3 ГБ на узел),
 # поэтому запросы по CPU оставляем честными: они и раскладывают поды
 # по двум узлам вместо того, чтобы сложить всё на мастер.

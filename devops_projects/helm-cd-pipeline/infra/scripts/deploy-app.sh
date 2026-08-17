@@ -51,9 +51,51 @@ stage() {
 die() { echo "ОШИБКА: $*" >&2; exit 1; }
 
 [ -d "$CHART_DIR" ]   || die "не найден чарт ${CHART_DIR}"
-[ -f "$KUBECONFIG" ]  || die "не найден kubeconfig ${KUBECONFIG}"
 command -v kubectl >/dev/null || die "на хосте нет kubectl"
 command -v helm    >/dev/null || die "на хосте нет helm"
+
+# --------------------------------------------------------------------------
+# Kubeconfig k3s создаёт внутри мастера, а этот скрипт работает с хоста —
+# значит файл нужно забрать. Раньше это делалось руками, и стенд молча
+# не воспроизводился у того, кто копировал репозиторий: `vagrant up`
+# отрабатывал, а триггер падал на отсутствующем файле.
+#
+# Забираем через scp с конфигом от `vagrant ssh-config`, а не через
+# `vagrant ssh -c`: вложенная сессия vagrant внутри триггера самого vagrant
+# — источник трудноуловимых зависаний, а ssh-config всего лишь печатает
+# параметры подключения и ничем не занят.
+#
+# Шаг идемпотентен: готовый файл не трогаем, чтобы можно было подсунуть
+# свой (например, для кластера, поднятого не Vagrant'ом).
+if [ ! -f "$KUBECONFIG" ]; then
+    echo "kubeconfig ${KUBECONFIG} не найден — забираем с мастера"
+    command -v vagrant >/dev/null || die "нет kubeconfig ${KUBECONFIG}, и vagrant недоступен,
+чтобы забрать его самостоятельно. Возьмите /etc/rancher/k3s/k3s.yaml с мастера
+вручную и замените в нём 127.0.0.1 на ${MASTER_IP}."
+
+    ssh_cfg="$(mktemp)"
+    # shellcheck disable=SC2064  # путь фиксируем сейчас, он не изменится
+    trap "rm -f '${ssh_cfg}'" EXIT
+
+    ( cd "$INFRA_DIR" && vagrant ssh-config k3s-master ) > "$ssh_cfg" \
+        || die "не удалось получить параметры ssh к k3s-master. Машина поднята?"
+
+    mkdir -p "$(dirname "$KUBECONFIG")"
+    # Файл доступен на чтение всем: k3s-master.sh ставит
+    # --write-kubeconfig-mode=644 именно ради этого шага, sudo не нужен.
+    scp -q -F "$ssh_cfg" k3s-master:/etc/rancher/k3s/k3s.yaml "$KUBECONFIG" \
+        || die "не удалось скопировать /etc/rancher/k3s/k3s.yaml с мастера"
+
+    # k3s пишет в kubeconfig адрес 127.0.0.1 — с точки зрения самой ноды это
+    # верно, но с хоста ведёт в никуда. Подменяем на адрес мастера, который
+    # заранее внесён в сертификат через --tls-san, иначе kubectl отверг бы
+    # соединение по несовпадению имени.
+    sed -i "s|https://127.0.0.1:6443|https://${MASTER_IP}:6443|" "$KUBECONFIG"
+    chmod 600 "$KUBECONFIG"
+    echo "  -> kubeconfig сохранён, сервер переписан на ${MASTER_IP}"
+fi
+
+[ -f "$KUBECONFIG" ]  || die "не найден kubeconfig ${KUBECONFIG}"
 
 for f in secrets.env private_key.txt public_key.txt; do
     [ -f "${SECRETS_DIR}/${f}" ] || die "нет файла ${SECRETS_DIR}/${f}.
@@ -156,11 +198,36 @@ echo '';  echo '--- Потребление ---'
 kubectl top nodes 2>/dev/null || echo '  (metrics-server ещё собирает данные)'
 kubectl top pods -n "${NAMESPACE}" 2>/dev/null || true
 
+# Подсказка намеренно не предлагает port-forward на localhost:8080, хотя так
+# короче. На стенде у Ingress задано имя (values-local.yaml), контроллер
+# сверяет заголовок Host, и обращение на localhost вернуло бы 404 при
+# полностью исправном приложении — самая обидная разновидность ошибки.
+INGRESS_HOST="$(kubectl get ingress main-ingress -n "${NAMESPACE}" \
+    -o jsonpath='{.spec.rules[0].host}' 2>/dev/null || true)"
+
 echo ""
 echo "============================================"
 echo "  Готово."
-echo "  Функциональные тесты с хоста:"
-echo "    kubectl -n ingress-nginx port-forward svc/ingress-nginx-controller 8080:80 &"
-echo "    newman run ${PROJECT_DIR}/tests/application_tests.postman_collection.json \\"
-echo "      -e ${PROJECT_DIR}/tests/application_tests.postman_environment.json"
+if [ -n "$INGRESS_HOST" ]; then
+    echo "  Ingress отвечает на имя ${INGRESS_HOST}. Пропишите его в /etc/hosts:"
+    echo "    ${MASTER_IP}  ${INGRESS_HOST}"
+    echo ""
+    echo "  Быстрая проверка без правки /etc/hosts:"
+    echo "    curl -H 'Host: ${INGRESS_HOST}' http://${MASTER_IP}/api/v1/gateway/hotels"
+    echo ""
+    echo "  Функциональные тесты (контейнер не требует ни /etc/hosts, ни newman на хосте):"
+    echo "    docker run --rm --add-host ${INGRESS_HOST}:${MASTER_IP} \\"
+    echo "      -v ${PROJECT_DIR}/tests:/etc/newman postman/newman:6-alpine \\"
+    echo "      run application_tests.postman_collection.json \\"
+    echo "      -e application_tests.postman_environment.json \\"
+    echo "      --env-var API_HOST=http://${INGRESS_HOST} \\"
+    echo "      --env-var USERS_PORT=80 --env-var GATEWAY_PORT=80"
+else
+    echo "  У Ingress нет имени — правило срабатывает на любой Host."
+    echo "  Функциональные тесты с хоста:"
+    echo "    newman run ${PROJECT_DIR}/tests/application_tests.postman_collection.json \\"
+    echo "      -e ${PROJECT_DIR}/tests/application_tests.postman_environment.json \\"
+    echo "      --env-var API_HOST=http://${MASTER_IP} \\"
+    echo "      --env-var USERS_PORT=80 --env-var GATEWAY_PORT=80"
+fi
 echo "============================================"
