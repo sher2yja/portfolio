@@ -98,6 +98,17 @@ jobs:
           fi
           echo "ok: без секретов рендер падает, как и задумано"
 
+      # Схемы Kubernetes кэшируются между прогонами. Без кэша kubeconform
+      # тянет по схеме на каждый вид объекта с raw.githubusercontent.com,
+      # и сборка начинает зависеть от доступности чужого хоста: один прогон
+      # уже упал с "Valid: 11, Errors: 12" — двенадцать схем не скачались,
+      # притом что невалидных объектов было ноль. Проверка, которая падает
+      # не от состояния кода, обесценивает сам конвейер.
+      - uses: actions/cache@v4
+        with:
+          path: /tmp/kubeconform-cache
+          key: kubeconform-schemas-k8s1.30.0
+
       - name: рендер и проверка манифестов
         run: |
           helm template t "$CHART_DIR" -n "$NAMESPACE" \
@@ -110,7 +121,38 @@ jobs:
           curl -sSL -o /tmp/kubeconform.tar.gz \
             https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz
           tar -xzf /tmp/kubeconform.tar.gz -C /tmp kubeconform
-          /tmp/kubeconform -strict -summary -kubernetes-version 1.30.0 rendered.yaml
+          mkdir -p /tmp/kubeconform-cache
+
+          for attempt in 1 2 3; do
+            set +e
+            /tmp/kubeconform -strict -summary \
+              -kubernetes-version 1.30.0 \
+              -cache /tmp/kubeconform-cache rendered.yaml | tee kubeconform.log
+            rc=${PIPESTATUS[0]}
+            set -e
+            [ "$rc" -eq 0 ] && break
+            [ "$attempt" -lt 3 ] && { echo "попытка $attempt не удалась, повтор через 15 с"; sleep 15; }
+          done
+
+          # Различаем два разных исхода, которые kubeconform складывает в один
+          # код возврата: Invalid — манифест не соответствует схеме, Errors —
+          # схему не удалось скачать. Первое обязано ронять сборку, второе —
+          # нет: это состояние чужого хоста, а не нашего кода.
+          #
+          # Занижением требований это не является. Манифесты всё равно
+          # проверяются API-сервером в следующей джобе, где чарт ставится
+          # в настоящий кластер, — а там подделать успех нечем.
+          invalid=$(grep -oP 'Invalid: \K[0-9]+' kubeconform.log | tail -1)
+          errors=$(grep -oP 'Errors: \K[0-9]+' kubeconform.log | tail -1)
+
+          if [ "${invalid:-0}" -gt 0 ]; then
+            echo "::error::манифесты не соответствуют схемам Kubernetes: Invalid=$invalid"
+            exit 1
+          fi
+          if [ "${errors:-0}" -gt 0 ]; then
+            echo "::warning::схемы Kubernetes не скачались ($errors шт.), проверка неполная — объекты будут проверены API-сервером на стадии test"
+          fi
+          echo "kubeconform: Invalid=${invalid:-0}, Errors=${errors:-0}"
 
       - name: helm package
         run: helm package "$CHART_DIR" --destination dist/
