@@ -28,6 +28,16 @@ concurrency:
 permissions:
   contents: read
 
+# shell: bash вместо стандартного для run — это не косметика. По умолчанию
+# GitHub запускает шаги как `/usr/bin/bash -e`, то есть без pipefail, и
+# падение первой команды в конвейере пропадает бесследно. Именно так шаг
+# установки k3d однажды оказался зелёным, ничего не установив: curl не
+# смог скачать скрипт, отдал в bash пустоту, bash успешно её выполнил.
+# Ключевое слово bash разворачивается в `bash --noprofile --norc -eo pipefail`.
+defaults:
+  run:
+    shell: bash
+
 env:
   PROJECT_DIR: devops_projects/helm-cd-pipeline
   CHART_DIR: devops_projects/helm-cd-pipeline/helm/myapp
@@ -142,8 +152,10 @@ jobs:
           # Занижением требований это не является. Манифесты всё равно
           # проверяются API-сервером в следующей джобе, где чарт ставится
           # в настоящий кластер, — а там подделать успех нечем.
-          invalid=$(grep -oP 'Invalid: \K[0-9]+' kubeconform.log | tail -1)
-          errors=$(grep -oP 'Errors: \K[0-9]+' kubeconform.log | tail -1)
+          # || true обязательно: при pipefail неудачный grep роняет всю
+          # подстановку, а отсутствие строки в сводке — не повод падать.
+          invalid=$(grep -oP 'Invalid: \K[0-9]+' kubeconform.log | tail -1 || true)
+          errors=$(grep -oP 'Errors: \K[0-9]+' kubeconform.log | tail -1 || true)
 
           if [ "${invalid:-0}" -gt 0 ]; then
             echo "::error::манифесты не соответствуют схемам Kubernetes: Invalid=$invalid"
@@ -221,7 +233,22 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: установка k3d
-        run: curl -sfL https://raw.githubusercontent.com/k3d-io/k3d/v5.7.4/install.sh | TAG=v5.7.4 bash
+        run: |
+          # Скачиваем в файл и проверяем, а не отдаём сразу в bash: так
+          # неудача curl видна сразу, а не превращается в успешный запуск
+          # пустого скрипта. Плюс явная проверка, что бинарник появился, —
+          # успешно отработавший установщик и работающий k3d это не одно
+          # и то же.
+          for attempt in 1 2 3; do
+            curl -sfL -o /tmp/k3d-install.sh \
+              https://raw.githubusercontent.com/k3d-io/k3d/v5.7.4/install.sh && break
+            echo "попытка $attempt не удалась, повтор через 15 с"
+            sleep 15
+          done
+          [ -s /tmp/k3d-install.sh ] || { echo "::error::установщик k3d не скачался"; exit 1; }
+          TAG=v5.7.4 bash /tmp/k3d-install.sh
+          command -v k3d >/dev/null || { echo "::error::k3d не появился в PATH после установки"; exit 1; }
+          k3d version
 
       - name: создание кластера
         run: |

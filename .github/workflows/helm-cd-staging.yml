@@ -24,6 +24,13 @@ permissions:
   contents: write   # приложить .tgz к релизу
   packages: write   # helm push в ghcr.io
 
+# Стандартный для run `/usr/bin/bash -e` не включает pipefail, из-за чего
+# падение первой команды в конвейере теряется. Ключевое слово bash даёт
+# `bash --noprofile --norc -eo pipefail`.
+defaults:
+  run:
+    shell: bash
+
 env:
   PROJECT_DIR: devops_projects/helm-cd-pipeline
   CHART_DIR: devops_projects/helm-cd-pipeline/helm/myapp
@@ -54,7 +61,13 @@ jobs:
           else
             VERSION="${GITHUB_REF_NAME#helm-cd-v}"
           fi
-          CHART_VERSION=$(grep -E '^version:' "$CHART_DIR/Chart.yaml" | awk '{print $2}')
+          # || true и явная проверка на пусто: при pipefail неудачный grep
+          # уронил бы шаг молча, без единой строки о причине.
+          CHART_VERSION=$(grep -E '^version:' "$CHART_DIR/Chart.yaml" | awk '{print $2}' || true)
+          if [ -z "$CHART_VERSION" ]; then
+            echo "::error::в $CHART_DIR/Chart.yaml не найдено поле version:"
+            exit 1
+          fi
           # Дешёвая проверка, которая ловит забытый подъём версии чарта:
           # тег и Chart.yaml обязаны совпадать, иначе в реестр уедет пакет
           # с версией, которой нет в истории.
@@ -83,14 +96,32 @@ jobs:
 
       - name: одноразовый кластер
         run: |
-          curl -sfL https://raw.githubusercontent.com/k3d-io/k3d/v5.7.4/install.sh | TAG=v5.7.4 bash
+          # Скачиваем в файл и проверяем, а не отдаём сразу в bash: иначе
+          # неудача curl превращается в успешный запуск пустого скрипта.
+          # Отдельно проверяем, что бинарник появился, — отработавший
+          # установщик и работающий k3d это не одно и то же.
+          for attempt in 1 2 3; do
+            curl -sfL -o /tmp/k3d-install.sh \
+              https://raw.githubusercontent.com/k3d-io/k3d/v5.7.4/install.sh && break
+            echo "попытка $attempt не удалась, повтор через 15 с"
+            sleep 15
+          done
+          [ -s /tmp/k3d-install.sh ] || { echo "::error::установщик k3d не скачался"; exit 1; }
+          TAG=v5.7.4 bash /tmp/k3d-install.sh
+          command -v k3d >/dev/null || { echo "::error::k3d не появился в PATH после установки"; exit 1; }
+          k3d version
+
           k3d cluster create staging \
             --agents 0 \
             --k3s-arg "--disable=traefik@server:*" \
             -p "8080:80@loadbalancer" \
             --wait --timeout 5m
 
-          TAG=$(grep -E '^imageTag:' "$CHART_DIR/values.yaml" | awk '{print $2}' | tr -d '"')
+          TAG=$(grep -E '^imageTag:' "$CHART_DIR/values.yaml" | awk '{print $2}' | tr -d '"' || true)
+          if [ -z "$TAG" ]; then
+            echo "::error::в $CHART_DIR/values.yaml не найдено поле imageTag:"
+            exit 1
+          fi
           echo "IMAGE_TAG=$TAG" >> "$GITHUB_ENV"
           IMAGES=""
           for s in session hotel booking payment loyalty report gateway; do
