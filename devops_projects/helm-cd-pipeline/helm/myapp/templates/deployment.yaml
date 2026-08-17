@@ -1,0 +1,120 @@
+{{- range $key, $svc := .Values.services }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $svc.deploymentName }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    svc: {{ $svc.labelValue }}
+    {{- include "myapp.labels" $ | nindent 4 }}
+spec:
+  replicas: {{ $svc.replicas }}
+  strategy:
+    type: {{ $svc.strategy }}
+    {{- if eq $svc.strategy "RollingUpdate" }}
+    rollingUpdate:
+      # maxUnavailable обязан быть 0, и это не вкусовщина.
+      #
+      # Helm при --wait считает Deployment готовым, когда
+      #   readyReplicas >= replicas - maxUnavailable
+      # При replicas: 1 и maxUnavailable: 1 правая часть равна нулю, условие
+      # выполняется сразу, и --wait возвращает управление, когда ни один под
+      # ещё не готов. Установка отчитывалась "deployed" за 46 секунд при
+      # восьми подах 0/1 — ровно тот ложно-зелёный результат, ради которого
+      # затевались пробы.
+      #
+      # С нулём правая часть равна единице, и ожидание становится настоящим.
+      # Побочный эффект приятный: обновление идёт без простоя — новый под
+      # поднимается раньше, чем гасится старый.
+      maxUnavailable: {{ $svc.maxUnavailable | default 0 }}
+      maxSurge: {{ $svc.maxSurge | default 1 }}
+    {{- end }}
+  selector:
+    matchLabels:
+      svc: {{ $svc.labelValue }}
+  template:
+    metadata:
+      labels:
+        svc: {{ $svc.labelValue }}
+      {{- with $svc.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      {{- with $svc.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: {{ $svc.containerName | default $svc.deploymentName }}
+          # Сторонние образы (postgres, rabbitmq) заданы в values целиком полем
+          # image; собственные сервисы — полем imageName, а реестр и тег
+          # берутся сверху, чтобы менять их одной строкой при выпуске.
+          {{- if $svc.image }}
+          image: {{ $svc.image }}
+          {{- else }}
+          image: {{ printf "%s/%s:%s" $.Values.imageRegistry $svc.imageName $.Values.imageTag }}
+          {{- end }}
+          imagePullPolicy: {{ $svc.imagePullPolicy | default $.Values.imagePullPolicy }}
+          ports:
+            {{- range $svc.ports }}
+            - containerPort: {{ .containerPort }}
+              {{- with .name }}
+              name: {{ . }}
+              {{- end }}
+            {{- end }}
+          {{- with $svc.env }}
+          env:
+            {{- range . }}
+            # hasKey, а не if .value: строки "0", "false" и пустая в Go-шаблонах
+            # ложны, и переменная с таким значением молча исчезала бы из манифеста.
+            - name: {{ .name }}
+              {{- if hasKey . "value" }}
+              value: {{ .value | quote }}
+              {{- end }}
+              {{- with .valueFrom }}
+              # valueFrom пробрасывается целиком: раньше шаблон жёстко писал
+              # configMapKeyRef, поэтому любой secretKeyRef или fieldRef из
+              # values превращался в configMapKeyRef с пустыми name и key.
+              valueFrom:
+                {{- toYaml . | nindent 16 }}
+              {{- end }}
+            {{- end }}
+          {{- end }}
+          {{- with $svc.envFrom }}
+          envFrom:
+            {{- if .configMap }}
+            - configMapRef:
+                name: {{ .configMap }}
+            {{- end }}
+            {{- if .secret }}
+            - secretRef:
+                name: {{ .secret }}
+            {{- end }}
+          {{- end }}
+          resources:
+            {{- include "myapp.resources" (dict "svc" $svc "root" $) | nindent 12 }}
+          {{- include "myapp.probes" (dict "svc" $svc "root" $) | nindent 10 }}
+          {{- with $svc.volumes }}
+          volumeMounts:
+            {{- range . }}
+            - name: {{ .name }}
+              mountPath: {{ .mountPath }}
+            {{- end }}
+          {{- end }}
+      {{- with $svc.volumes }}
+      volumes:
+        {{- range . }}
+        - name: {{ .name }}
+          {{- if .configMap }}
+          configMap:
+            name: {{ .configMap }}
+          {{- end }}
+          {{- if .pvc }}
+          persistentVolumeClaim:
+            claimName: {{ .pvc }}
+          {{- end }}
+        {{- end }}
+      {{- end }}
+{{- end }}

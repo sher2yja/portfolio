@@ -1,0 +1,69 @@
+# Локальный кластер k3s из двух узлов.
+#
+# Зачем он нужен, если конвейер поднимает собственный кластер k3d: здесь
+# приложение живёт долго. На одноразовом кластере в раннере нельзя ни
+# посмотреть, как ведёт себя релиз через час, ни снять потребление памяти
+# под нагрузкой, ни отладить пробы иначе как пятнадцатиминутными итерациями
+# через push. Всё это делается тут, а конвейер повторяет уже проверенное.
+#
+#   k3s-master — control-plane и само приложение;
+#   k3s-worker — второй узел, чтобы поды раскладывались, а не жили на одном.
+#
+# Память по 2 ГБ на узел. В такой бюджет семь Spring Boot по умолчанию
+# не помещаются, поэтому ужимаются не машины, а приложения: в ConfigMap
+# чарта прописан JAVA_TOOL_OPTIONS с -Xmx192m, а requests/limits заданы
+# в helm/myapp/values.yaml.
+#
+# Подсеть 192.168.60.0/24 выбрана свободной: 192.168.122.0/24 занимает
+# сеть default у libvirt.
+
+MASTER_IP = "192.168.60.10"
+WORKER_IP = "192.168.60.11"
+
+# Последняя поднимаемая нода. К ней привязан триггер авторазворачивания:
+# повесить его на master нельзя — trigger.after :up срабатывает сразу после
+# создания своей машины, то есть до того, как worker вообще существует, и
+# deploy-app.sh встал бы в ожидание второй ноды, блокируя её создание.
+LAST_NODE = "k3s-worker"
+
+Vagrant.configure("2") do |config|
+  config.vm.box = "generic/ubuntu2204"
+  config.vm.synced_folder ".", "/vagrant"
+
+  nodes = {
+    "k3s-master" => { ip: MASTER_IP, mem: 2048, cpus: 2 },
+    "k3s-worker" => { ip: WORKER_IP, mem: 2048, cpus: 2 }
+  }
+
+  nodes.each do |name, cfg|
+    config.vm.define name do |node|
+      node.vm.hostname = name
+      node.vm.network "private_network", ip: cfg[:ip]
+
+      node.vm.provider "libvirt" do |lv|
+        lv.memory = cfg[:mem]
+        lv.cpus = cfg[:cpus]
+      end
+
+      if name == "k3s-master"
+        node.vm.provision "shell",
+                          path: "scripts/k3s-master.sh",
+                          args: [MASTER_IP]
+      else
+        node.vm.provision "shell",
+                          path: "scripts/k3s-worker.sh",
+                          args: [MASTER_IP]
+      end
+
+      # Авторазворачивание приложения: ingress-nginx и Helm-релиз.
+      # Скрипт работает с хоста через kubeconfig и идемпотентен, так что
+      # повторный `vagrant up` или `vagrant reload` его безопасно перезапустит.
+      if name == LAST_NODE
+        node.trigger.after :up do |t|
+          t.info = "Разворачивание приложения (ingress-nginx + helm)..."
+          t.run = { path: "scripts/deploy-app.sh" }
+        end
+      end
+    end
+  end
+end
