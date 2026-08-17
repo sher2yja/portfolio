@@ -1,0 +1,408 @@
+# Values чарта myapp.
+#
+# Каждый ключ services.<name> описывает один Deployment и один Service.
+# Оверрайды под конкретную площадку лежат рядом: values-ci.yaml (одноразовый
+# кластер k3d в раннере) и values-local.yaml (стенд Vagrant + k3s).
+
+# Реестр и тег образов вынесены наверх, чтобы выпуск менялся одной строкой:
+#   helm upgrade --install myapp . -n staging --set imageTag=1.1.0
+imageRegistry: sherryja
+imageTag: "1.0.0"
+imagePullPolicy: IfNotPresent
+
+# ---------------------------------------------------------------------------
+# Секрет приложения.
+#
+# Чарт создаёт его сам — это принципиально. Пока Secret заводился отдельной
+# командой перед установкой, `helm install` в чистый namespace давал девять
+# подов в CrashLoopBackOff и падение по таймауту через несколько минут,
+# причём сообщение об ошибке пришлось бы искать в describe пода.
+#
+# Значения ниже — заглушки, реальные приходят при установке из трёх разных
+# источников, и это единственное различие между площадками:
+#   CI       — эфемерная пара ключей, openssl genpkey прямо в джобе
+#   staging  — секреты защищённого окружения GitHub
+#   стенд    — файлы из каталога $HELM_CD_SECRETS_DIR
+#
+# PRIVATE_KEY и PUBLIC_KEY — это PKCS#8 и X.509 в DER, закодированные base64
+# одной строкой, БЕЗ заголовков PEM: JwtProvider приложения читает их через
+# PKCS8EncodedKeySpec. Вывод `openssl genrsa` (PKCS#1) не подойдёт, нужен
+# `openssl genpkey ... -outform DER`. Команды целиком — в infra/secrets.env.example.
+secret:
+  create: true
+  name: svc-secrets
+  data:
+    POSTGRES_USER: postgres
+    POSTGRES_PASSWORD: ""
+    RABBIT_MQ_USER: guest
+    RABBIT_MQ_PASSWORD: ""
+    PRIVATE_KEY: ""
+    PUBLIC_KEY: ""
+
+# ---------------------------------------------------------------------------
+# Ресурсы по умолчанию на любой контейнер. Каждый сервис может переопределить
+# своим блоком resources.
+#
+# Числа не оценочные, а снятые с работающего релиза (kubectl top pods сразу
+# после прогона функциональных тестов):
+#
+#   booking 185 Ми   session 162 Ми   hotel 158 Ми   loyalty 157 Ми
+#   payment 154 Ми   report  138 Ми   gateway 95 Ми
+#   rabbitmq 137 Ми  postgres 73 Ми   — итого по релизу около 1,26 ГБ
+#
+# Отсюда request 192 Ми: чуть выше фактического максимума, чтобы планировщик
+# считал место честно и не набивал узел под завязку. Limit 384 Ми — двукратный
+# запас на пик при обработке запроса; за ним OOMKill, а не тихая деградация.
+defaultResources:
+  requests:
+    cpu: 100m
+    memory: 192Mi
+  limits:
+    cpu: 800m
+    memory: 384Mi
+
+# ---------------------------------------------------------------------------
+# Пробы.
+#
+# Бюджет старта задаётся startupProbe (periodSeconds × failureThreshold),
+# а не initialDelaySeconds. Единая фиксированная задержка здесь не работает
+# ни в одну сторону: session-service открывает порт секунд за 25, а gateway
+# стартует только после семи последовательных wait-for-it по цепочке
+# зависимостей — в худшем случае через четыре-пять минут. Любое общее
+# значение либо убивало бы gateway liveness-пробой, либо на минуты
+# замедляло бы перезапуск остальных.
+#
+# Пока startupProbe не прошёл, readiness и liveness не выполняются вообще.
+defaultProbes:
+  startup:
+    periodSeconds: 5
+    failureThreshold: 60      # до 5 минут
+  readiness:
+    periodSeconds: 10
+    timeoutSeconds: 3
+    failureThreshold: 3
+  liveness:
+    periodSeconds: 20
+    timeoutSeconds: 5
+    failureThreshold: 6
+
+# ---------------------------------------------------------------------------
+services:
+  database:
+    deploymentName: database
+    containerName: postgres
+    serviceName: db
+    labelValue: db
+    image: postgres:15.1-alpine
+    replicas: 1
+    strategy: Recreate
+    ports:
+      - containerPort: 5432
+    probePort: 5432
+    # У postgres проба содержательная, а не по открытому порту: порт 5432
+    # слушается раньше, чем отработает initdb со скриптом создания шести баз.
+    probes:
+      startupProbe:
+        exec:
+          command: ["sh", "-c", 'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_USER"']
+        periodSeconds: 5
+        failureThreshold: 24
+      readinessProbe:
+        exec:
+          command: ["sh", "-c", 'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_USER"']
+        periodSeconds: 10
+        timeoutSeconds: 3
+        failureThreshold: 3
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 256Mi
+    envFrom:
+      secret: svc-secrets
+    volumes:
+      - name: virtual-db-disk
+        mountPath: /docker-entrypoint-initdb.d/
+        configMap: database-script
+      - name: postgres-storage
+        mountPath: /var/lib/postgresql/data
+        pvc: postgres-pvc
+
+  rabbitmq:
+    deploymentName: rabbitmq
+    serviceName: rabbitmq
+    labelValue: rabbit
+    image: rabbitmq:3-management-alpine
+    replicas: 1
+    strategy: RollingUpdate
+    ports:
+      - name: data-exchange
+        containerPort: 5672
+      - name: web
+        containerPort: 15672
+    probePort: 5672
+    resources:
+      requests:
+        cpu: 100m
+        memory: 192Mi
+      limits:
+        cpu: 500m
+        memory: 320Mi
+    # booking-service и report-service читают учётные данные брокера из
+    # секрета. Раньше сам брокер о них не знал и работал на встроенном
+    # guest/guest — сходилось только потому, что в секрете лежало слово guest.
+    # Теперь обе стороны берут одно значение из одного места.
+    #
+    # Прежняя переменная RABBITMQ_ALLOW_REMOTE_GUEST_ACCESS удалена: она
+    # относится к образам Bitnami, официальный образ её игнорирует.
+    env:
+      - name: RABBITMQ_DEFAULT_USER
+        valueFrom:
+          secretKeyRef:
+            name: svc-secrets
+            key: RABBIT_MQ_USER
+      - name: RABBITMQ_DEFAULT_PASS
+        valueFrom:
+          secretKeyRef:
+            name: svc-secrets
+            key: RABBIT_MQ_PASSWORD
+
+  session:
+    deploymentName: session-svc
+    serviceName: session-service
+    labelValue: session
+    imageName: session-service
+    replicas: 1
+    strategy: RollingUpdate
+    ports:
+      - containerPort: 8081
+    probePort: 8081
+    envFrom:
+      configMap: environments
+      secret: svc-secrets
+    env:
+      - name: POSTGRES_DB
+        valueFrom:
+          configMapKeyRef:
+            name: environments
+            key: POSTGRES_DB_SESSION
+
+  hotel:
+    deploymentName: hotel-svc
+    serviceName: hotel-service
+    labelValue: hotel
+    imageName: hotel-service
+    replicas: 1
+    strategy: RollingUpdate
+    ports:
+      - containerPort: 8082
+    probePort: 8082
+    envFrom:
+      configMap: environments
+      secret: svc-secrets
+    env:
+      - name: POSTGRES_DB
+        valueFrom:
+          configMapKeyRef:
+            name: environments
+            key: POSTGRES_DB_HOTEL
+
+  booking:
+    deploymentName: booking-svc
+    serviceName: booking-service
+    labelValue: booking
+    imageName: booking-service
+    replicas: 1
+    strategy: RollingUpdate
+    ports:
+      - containerPort: 8083
+    probePort: 8083
+    # Ждёт db, payment, hotel, loyalty и rabbitmq — пять хопов wait-for-it.
+    startupFailureThreshold: 75
+    envFrom:
+      configMap: environments
+      secret: svc-secrets
+    env:
+      - name: POSTGRES_DB
+        valueFrom:
+          configMapKeyRef:
+            name: environments
+            key: POSTGRES_DB_BOOKING
+
+  payment:
+    deploymentName: payment-svc
+    serviceName: payment-service
+    labelValue: payment
+    imageName: payment-service
+    replicas: 1
+    strategy: RollingUpdate
+    ports:
+      - containerPort: 8084
+    probePort: 8084
+    envFrom:
+      configMap: environments
+      secret: svc-secrets
+    env:
+      - name: POSTGRES_DB
+        valueFrom:
+          configMapKeyRef:
+            name: environments
+            key: POSTGRES_DB_PAYMENT
+
+  loyalty:
+    deploymentName: loyalty-svc
+    serviceName: loyalty-service
+    labelValue: loyalty
+    imageName: loyalty-service
+    replicas: 1
+    strategy: RollingUpdate
+    ports:
+      - containerPort: 8085
+    probePort: 8085
+    envFrom:
+      configMap: environments
+      secret: svc-secrets
+    env:
+      - name: POSTGRES_DB
+        valueFrom:
+          configMapKeyRef:
+            name: environments
+            key: POSTGRES_DB_LOYALTY
+
+  report:
+    deploymentName: report-svc
+    serviceName: report-service
+    labelValue: report
+    imageName: report-service
+    replicas: 1
+    strategy: RollingUpdate
+    ports:
+      - containerPort: 8086
+    probePort: 8086
+    envFrom:
+      configMap: environments
+      secret: svc-secrets
+    env:
+      - name: POSTGRES_DB
+        valueFrom:
+          configMapKeyRef:
+            name: environments
+            key: POSTGRES_DB_REPORT
+
+  gateway:
+    deploymentName: gateway-svc
+    serviceName: gateway-service
+    labelValue: gateway
+    imageName: gateway-service
+    replicas: 1
+    strategy: RollingUpdate
+    ports:
+      - containerPort: 8087
+    probePort: 8087
+    # Самый долгий старт в наборе: цепочка wait-for-it у gateway — семь хопов
+    # по 40 секунд, и только потом стартует JVM. 90 × 5 с = 7,5 минуты запаса.
+    startupFailureThreshold: 90
+    envFrom:
+      configMap: environments
+      secret: svc-secrets
+
+# ---------------------------------------------------------------------------
+# Тома. Список, а не одиночный ключ: так том можно выдать любому компоненту,
+# не трогая шаблон. По умолчанию том один — под данные PostgreSQL.
+# Очередь RabbitMQ здесь транзитная и переживать перезапуск не обязана.
+#
+# storageClassName не указан намеренно: и в k3s, и в k3d работает
+# local-path-provisioner, он выдаёт том по умолчанию.
+persistentVolumeClaims:
+  - name: postgres-pvc
+    size: 2Gi
+    accessModes:
+      - ReadWriteOnce
+
+# ---------------------------------------------------------------------------
+# Ingress разводит по путям два сервиса за одним адресом: session-service
+# принимает /api/v1/auth, gateway-service — /api/v1/gateway. Коллекция
+# Postman обращается к обоим по одному хосту, развести их может только он.
+#
+# host пустой по умолчанию: правило срабатывает при любом заголовке Host,
+# и тестам достаточно сходить на адрес самого контроллера — не нужны ни
+# внешний DNS, ни правки /etc/hosts в раннере. На стенде host задаётся
+# в values-local.yaml.
+#
+# TLS не настраивается: внутри кластера ходим по HTTP.
+ingress:
+  className: nginx
+  host: ""
+  paths:
+    - path: /api/v1/auth
+      serviceName: session-service
+      servicePort: 8081
+    - path: /api/v1/gateway
+      serviceName: gateway-service
+      servicePort: 8087
+
+# ---------------------------------------------------------------------------
+# Базы, которые создаёт init.sql при первой инициализации тома PostgreSQL.
+postgres:
+  databases:
+    - users_db
+    - hotels_db
+    - reservations_db
+    - payments_db
+    - balances_db
+    - statistics_db
+
+# ---------------------------------------------------------------------------
+# Содержимое ConfigMap environments — общие переменные окружения сервисов.
+env:
+  # create, а не update: session-service и hotel-service при каждом старте
+  # выполняют свой data.sql, а он неидемпотентен (INSERT с явными id).
+  # При update таблицы переживают перезапуск, повторный INSERT падает с
+  # "duplicate key value violates unique constraint", и под уходит в
+  # CrashLoopBackOff — приложение поднималось бы только на пустой базе.
+  SPRING_JPA_HIBERNATE_DDL_AUTO: create
+
+  # Без этого каждая JVM берёт под кучу четверть памяти ноды: семь сервисов
+  # в такой бюджет не помещаются. С -Xmx192m расход на сервис падает
+  # примерно с 400 до 250 Ми.
+  JAVA_TOOL_OPTIONS: "-Xmx192m -Xss512k -XX:MaxMetaspaceSize=128m"
+
+  # Версия приложения. Отдаётся наружу эндпоинтом /api/v1/gateway/version —
+  # по нему проверяется, что доставка действительно доехала, а не просто
+  # джоба стала зелёной.
+  APP_VERSION: "1.0.0"
+
+  # Идентификаторы, по которым сервисы узнают друг друга в межсервисных
+  # вызовах. Это константы, одинаковые во всех репликах, а не секреты —
+  # поэтому им место в ConfigMap, а не в Secret.
+  GATEWAY_UUID: b51ceda2-bfa5-11eb-8529-0242ac130003
+  BOOKING_UUID: 911ccb4c-c055-11eb-8529-0242ac130003
+
+  SESSION_SERVICE_HOST: session-service
+  SESSION_SERVICE_PORT: "8081"
+  HOTEL_SERVICE_HOST: hotel-service
+  HOTEL_SERVICE_PORT: "8082"
+  BOOKING_SERVICE_HOST: booking-service
+  BOOKING_SERVICE_PORT: "8083"
+  PAYMENT_SERVICE_HOST: payment-service
+  PAYMENT_SERVICE_PORT: "8084"
+  LOYALTY_SERVICE_HOST: loyalty-service
+  LOYALTY_SERVICE_PORT: "8085"
+  REPORT_SERVICE_HOST: report-service
+  REPORT_SERVICE_PORT: "8086"
+
+  POSTGRES_HOST: db
+  POSTGRES_PORT: "5432"
+  POSTGRES_DB_SESSION: users_db
+  POSTGRES_DB_HOTEL: hotels_db
+  POSTGRES_DB_BOOKING: reservations_db
+  POSTGRES_DB_PAYMENT: payments_db
+  POSTGRES_DB_LOYALTY: balances_db
+  POSTGRES_DB_REPORT: statistics_db
+
+  RABBIT_MQ_HOST: rabbitmq
+  RABBIT_MQ_PORT: "5672"
+  RABBIT_MQ_QUEUE_NAME: messagequeue
+  RABBIT_MQ_EXCHANGE: messagequeue-exchange

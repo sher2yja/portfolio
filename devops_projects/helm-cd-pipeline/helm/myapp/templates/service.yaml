@@ -1,0 +1,27 @@
+{{- range $key, $svc := .Values.services }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $svc.serviceName }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    svc: {{ $svc.labelValue }}
+    {{- include "myapp.labels" $ | nindent 4 }}
+spec:
+  selector:
+    svc: {{ $svc.labelValue }}
+  ports:
+    {{- range $svc.ports }}
+    {{- if .name }}
+    - name: {{ .name }}
+      protocol: TCP
+      port: {{ .containerPort }}
+      targetPort: {{ .containerPort }}
+    {{- else }}
+    - protocol: TCP
+      port: {{ .containerPort }}
+      targetPort: {{ .containerPort }}
+    {{- end }}
+    {{- end }}
+{{- end }}

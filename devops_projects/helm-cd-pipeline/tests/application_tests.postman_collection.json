@@ -1,0 +1,273 @@
+{
+  "info": {
+    "_postman_id": "8ab15ec0-8499-4a47-baef-e01e58eebf9a",
+    "name": "Hotel booking — functional tests",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Пять запросов, проходящих приложение насквозь: вход пользователя, список отелей, карточка отеля, бронирование и остаток бонусного счёта. Токен, полученный на первом шаге, переиспользуется остальными.\n\nBASIC и BASIC_ADMIN — учебные учётные данные из начальных данных базы (User:qwerty и Admin:qwerty). Это демонстрационный стенд, настоящих учётных данных здесь нет и быть не должно."
+  },
+  "item": [
+    {
+      "name": "Login User",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Login as a regular user\", function() {",
+              "    pm.response.to.have.status(200)",
+              "    pm.collectionVariables.set(\"BEARER\", pm.response.headers.get(\"authorization\"));",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "authorization",
+            "value": "{{BASIC}}",
+            "type": "default"
+          }
+        ],
+        "url": {
+          "raw": "{{API_HOST}}:{{USERS_PORT}}/api/v1/auth/authorize",
+          "host": [
+            "{{API_HOST}}"
+          ],
+          "port": "{{USERS_PORT}}",
+          "path": [
+            "api",
+            "v1",
+            "auth",
+            "authorize"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Get Hotles",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Get hotels info\", function() {",
+              "    pm.response.to.have.status(200)",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "authorization",
+            "value": "{{BEARER}}",
+            "type": "default"
+          }
+        ],
+        "url": {
+          "raw": "{{API_HOST}}:{{GATEWAY_PORT}}/api/v1/gateway/hotels",
+          "host": [
+            "{{API_HOST}}"
+          ],
+          "port": "{{GATEWAY_PORT}}",
+          "path": [
+            "api",
+            "v1",
+            "gateway",
+            "hotels"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Get Hotel",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Get hotels info\", function() {",
+              "    pm.response.to.have.status(200)",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "authorization",
+            "value": "{{BEARER}}",
+            "type": "default"
+          }
+        ],
+        "url": {
+          "raw": "{{API_HOST}}:{{GATEWAY_PORT}}/api/v1/gateway/hotels/{{HOTEL_UID}}",
+          "host": [
+            "{{API_HOST}}"
+          ],
+          "port": "{{GATEWAY_PORT}}",
+          "path": [
+            "api",
+            "v1",
+            "gateway",
+            "hotels",
+            "{{HOTEL_UID}}"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Book Hotel",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Book hotel\", function() {",
+              "    pm.response.to.have.status(201)",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "authorization",
+            "value": "{{BEARER}}",
+            "type": "default"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"hotelUid\":\"{{HOTEL_UID}}\",\n    \"room\": 1,\n    \"paymentInfo\": \"somePaymentInfo\",\n    \"dateInterval\":{\n                \"from\": \"2022-10-18T00:00:00.000000\",\n                \"to\": \"2022-12-18T00:00:00.000000\"\n            },\n            \"roomCost\":2000\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{API_HOST}}:{{GATEWAY_PORT}}/api/v1/gateway/booking",
+          "host": [
+            "{{API_HOST}}"
+          ],
+          "port": "{{GATEWAY_PORT}}",
+          "path": [
+            "api",
+            "v1",
+            "gateway",
+            "booking"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Get User's Loyalty Balance",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Get user's loyalty balance\", function() {",
+              "    pm.response.to.have.status(200)",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "authorization",
+            "value": "{{BEARER}}",
+            "type": "default"
+          }
+        ],
+        "url": {
+          "raw": "{{API_HOST}}:{{GATEWAY_PORT}}/api/v1/gateway/loyalty",
+          "host": [
+            "{{API_HOST}}"
+          ],
+          "port": "{{GATEWAY_PORT}}",
+          "path": [
+            "api",
+            "v1",
+            "gateway",
+            "loyalty"
+          ]
+        }
+      },
+      "response": []
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "requests": {},
+        "exec": [
+          ""
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "requests": {},
+        "exec": [
+          ""
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "BASIC",
+      "value": "Basic VXNlcjpxd2VydHk="
+    },
+    {
+      "key": "BEARER",
+      "value": ""
+    },
+    {
+      "key": "API_HOST",
+      "value": "http://localhost"
+    },
+    {
+      "key": "USERS_PORT",
+      "value": "8080"
+    },
+    {
+      "key": "GATEWAY_PORT",
+      "value": "8080"
+    },
+    {
+      "key": "HOTEL_UID",
+      "value": "9d05ba36-bf8d-11eb-8529-0242ac130003"
+    },
+    {
+      "key": "BASIC_ADMIN",
+      "value": "QWRtaW46cXdlcnR5"
+    }
+  ]
+}

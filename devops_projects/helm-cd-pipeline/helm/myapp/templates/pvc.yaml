@@ -1,0 +1,28 @@
+{{/*
+Тома, запрошенные чартом. Список в values, а не одиночный ключ: том можно
+выдать любому компоненту, не трогая шаблон.
+
+storageClassName не указан намеренно: и в k3s, и в k3d из коробки работает
+local-path-provisioner, он выдаёт том по умолчанию. Ручной PersistentVolume
+на hostPath здесь не нужен — его пришлось бы чистить руками между
+пересозданиями кластера, а в одноразовом кластере раннера он бессмыслен.
+*/}}
+{{- range .Values.persistentVolumeClaims }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ .name }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "myapp.labels" $ | nindent 4 }}
+spec:
+  accessModes:
+    {{- toYaml (.accessModes | default (list "ReadWriteOnce")) | nindent 4 }}
+  {{- with .storageClassName }}
+  storageClassName: {{ . }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .size }}
+{{- end }}

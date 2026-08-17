@@ -1,0 +1,286 @@
+# Конвейер сборки и проверки чарта.
+#
+# Стадия build упаковывает чарт и проверяет всё, что можно проверить статикой.
+# Стадия test поднимает одноразовый кластер прямо в раннере, ставит туда
+# собранный артефакт и гоняет по живому приложению функциональные тесты.
+#
+# Почему файлов два. Репозиторий общий на несколько проектов, поэтому
+# path-фильтр обязателен — иначе любой push в любую ветку поднимал бы
+# кластер с девятью подами. Но paths вместе с tags в одном блоке on.push
+# работает непредсказуемо: при появлении нового ref'а diff считать не от
+# чего. Поэтому доставка по тегу вынесена в helm-cd-staging.yml, где роль
+# адресации играет префикс тега.
+
+name: helm-cd-pipeline
+
+on:
+  push:
+    branches: ['feature_*']
+    paths:
+      - 'devops_projects/helm-cd-pipeline/**'
+      - '.github/workflows/helm-cd-pipeline.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: helm-cd-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  PROJECT_DIR: devops_projects/helm-cd-pipeline
+  CHART_DIR: devops_projects/helm-cd-pipeline/helm/myapp
+  NAMESPACE: staging
+
+jobs:
+  # ---------------------------------------------------------------------------
+  build:
+    name: сборка и статические проверки
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.16.2
+
+      - name: hadolint по Dockerfile'ам
+        run: |
+          for f in "$PROJECT_DIR"/docker/*/Dockerfile; do
+            echo "--- $f"
+            docker run --rm -i -v "$PWD/$PROJECT_DIR/.hadolint.yaml:/.hadolint.yaml:ro" \
+              hadolint/hadolint:2.12.0 hadolint --config /.hadolint.yaml - < "$f"
+          done
+
+      - name: shellcheck по скриптам
+        run: |
+          # wait-for-it.sh — сторонний скрипт, к нему применяем только
+          # проверку на ошибки, а не полный набор стилевых замечаний.
+          shellcheck "$PROJECT_DIR"/infra/scripts/*.sh
+          shellcheck --severity=error "$PROJECT_DIR"/docker/wait-for-it.sh
+
+      - name: helm lint
+        run: helm lint "$CHART_DIR"
+
+      - name: чарт не ставится без секретов
+        run: |
+          # Обратная проверка: без обязательных значений установка обязана
+          # падать на шаблоне, а не через несколько минут в CrashLoopBackOff.
+          if helm template t "$CHART_DIR" -n "$NAMESPACE" >/dev/null 2>&1; then
+            echo "::error::чарт отрендерился без обязательных секретов — required потерян"
+            exit 1
+          fi
+          echo "ok: без секретов рендер падает, как и задумано"
+
+      - name: рендер и проверка манифестов
+        run: |
+          helm template t "$CHART_DIR" -n "$NAMESPACE" \
+            --set-string secret.data.POSTGRES_PASSWORD=dummy \
+            --set-string secret.data.RABBIT_MQ_PASSWORD=dummy \
+            --set-string secret.data.PRIVATE_KEY=dummy \
+            --set-string secret.data.PUBLIC_KEY=dummy > rendered.yaml
+          echo "объектов: $(grep -c '^kind:' rendered.yaml)"
+
+          curl -sSL -o /tmp/kubeconform.tar.gz \
+            https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz
+          tar -xzf /tmp/kubeconform.tar.gz -C /tmp kubeconform
+          /tmp/kubeconform -strict -summary -kubernetes-version 1.30.0 rendered.yaml
+
+      - name: helm package
+        run: helm package "$CHART_DIR" --destination dist/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: chart
+          path: |
+            dist/*.tgz
+            rendered.yaml
+          retention-days: 7
+
+  # ---------------------------------------------------------------------------
+  test:
+    name: развёртывание в одноразовом кластере и функциональные тесты
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.16.2
+
+      # Ставим ровно тот пакет, который собрала предыдущая стадия, а не
+      # каталог из репозитория: проверять надо артефакт доставки.
+      - uses: actions/download-artifact@v4
+        with:
+          name: chart
+          path: dist/
+
+      # Анонимный лимит Docker Hub — сто обращений за шесть часов на адрес,
+      # а раннеры GitHub сидят за общими адресами, так что семь образов подряд
+      # время от времени упираются в 429. С учётными данными лимит выше.
+      #
+      # Шаг условный: без секретов конвейер всё равно проходит (образы
+      # публичные), поэтому форк заводится без предварительной настройки.
+      - name: Docker Hub (если заданы учётные данные)
+        if: ${{ secrets.DOCKERHUB_USERNAME != '' }}
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: установка k3d
+        run: curl -sfL https://raw.githubusercontent.com/k3d-io/k3d/v5.7.4/install.sh | TAG=v5.7.4 bash
+
+      - name: создание кластера
+        run: |
+          # --agents 0 сознательно: раскладывать поды не по чему, а второй
+          # контейнер k3s съел бы память и такт процессора. traefik выключен,
+          # вместо него ставится ingress-nginx — тот же контроллер, что и
+          # на локальном стенде. Порт 8080 хоста уходит на 80 балансировщика.
+          k3d cluster create app \
+            --agents 0 \
+            --k3s-arg "--disable=traefik@server:*" \
+            -p "8080:80@loadbalancer" \
+            --wait --timeout 5m
+          kubectl cluster-info
+          kubectl get nodes -o wide
+
+      - name: загрузка образов в кластер
+        run: |
+          TAG=$(grep -E '^imageTag:' "$CHART_DIR/values.yaml" | awk '{print $2}' | tr -d '"')
+          echo "IMAGE_TAG=$TAG" >> "$GITHUB_ENV"
+          IMAGES=""
+          for s in session hotel booking payment loyalty report gateway; do
+            docker pull "sherryja/$s-service:$TAG"
+            IMAGES="$IMAGES sherryja/$s-service:$TAG"
+          done
+          # Импорт в containerd узла вместо загрузки каждым подом: прогон
+          # становится детерминированным и не требует imagePullSecret внутри
+          # кластера. Копия на хосте после импорта не нужна — освобождаем.
+          # shellcheck disable=SC2086
+          k3d image import -c app $IMAGES
+          # shellcheck disable=SC2086
+          docker image rm $IMAGES || true
+          df -h / | tail -1
+
+      - name: ingress-nginx
+        run: |
+          # admissionWebhooks выключены намеренно. Вебхук принимает соединения
+          # на пару секунд позже, чем под становится Ready, и установка чарта
+          # с объектом Ingress падает с "failed calling webhook". На стенде,
+          # где кластер живёт долго, вебхук остаётся включённым — там он
+          # приносит пользу; здесь проверять чужие Ingress нечем и незачем.
+          helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+          helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
+            -n ingress-nginx --create-namespace --version 4.11.3 \
+            --set controller.service.type=LoadBalancer \
+            --set controller.admissionWebhooks.enabled=false \
+            --wait --timeout 5m
+
+      - name: эфемерные секреты
+        run: |
+          # Ключ живёт ровно столько, сколько кластер, — минуты. Постоянная
+          # пара используется только на стадии доставки и лежит в секретах
+          # защищённого окружения.
+          #
+          # Шаг pkcs8 -topk8 обязателен: openssl genpkey -outform DER даёт
+          # для RSA традиционный PKCS#1, а приложение читает ключ через
+          # PKCS8EncodedKeySpec и падает с InvalidKeySpecException.
+          openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out /tmp/priv.pem 2>/dev/null
+          openssl pkcs8 -topk8 -nocrypt -in /tmp/priv.pem -outform DER -out /tmp/priv.der
+          openssl base64 -A -in /tmp/priv.der > /tmp/private_key.txt
+          openssl rsa -in /tmp/priv.pem -pubout -outform DER -out /tmp/pub.der 2>/dev/null
+          openssl base64 -A -in /tmp/pub.der > /tmp/public_key.txt
+          rm -f /tmp/priv.pem /tmp/priv.der /tmp/pub.der
+
+          PG_PASS=$(openssl rand -hex 16)
+          RMQ_PASS=$(openssl rand -hex 16)
+          echo "::add-mask::$PG_PASS"
+          echo "::add-mask::$RMQ_PASS"
+          echo "PG_PASS=$PG_PASS" >> "$GITHUB_ENV"
+          echo "RMQ_PASS=$RMQ_PASS" >> "$GITHUB_ENV"
+
+      - name: установка релиза
+        run: |
+          helm upgrade --install myapp dist/myapp-*.tgz \
+            -n "$NAMESPACE" --create-namespace \
+            -f "$CHART_DIR/values-ci.yaml" \
+            --set-string secret.data.POSTGRES_PASSWORD="$PG_PASS" \
+            --set-string secret.data.RABBIT_MQ_USER=app \
+            --set-string secret.data.RABBIT_MQ_PASSWORD="$RMQ_PASS" \
+            --set-file secret.data.PRIVATE_KEY=/tmp/private_key.txt \
+            --set-file secret.data.PUBLIC_KEY=/tmp/public_key.txt \
+            --wait --timeout 15m
+          kubectl get pods -n "$NAMESPACE" -o wide
+
+      - name: функциональные тесты
+        run: |
+          # helm --wait возвращается только когда поды прошли пробы, но
+          # правило Ingress контроллер подхватывает на секунду-две позже.
+          for _ in $(seq 1 20); do
+            curl -sf -o /dev/null http://localhost:8080/api/v1/gateway/hotels && break
+            sleep 3
+          done
+
+          npm install -g newman newman-reporter-htmlextra
+          mkdir -p reports
+          newman run "$PROJECT_DIR/tests/application_tests.postman_collection.json" \
+            -e "$PROJECT_DIR/tests/application_tests.postman_environment.json" \
+            -r cli,junit,htmlextra \
+            --reporter-junit-export reports/newman.xml \
+            --reporter-htmlextra-export reports/newman.html
+
+      - name: замеры и сводка
+        if: always()
+        run: |
+          mkdir -p diag
+          {
+            echo "## Прогон \`${GITHUB_REF_NAME}\`"
+            echo
+            echo "Образы: \`sherryja/*:${IMAGE_TAG:-?}\`"
+            echo
+            echo '### Поды'
+            echo '```'
+            kubectl get pods -n "$NAMESPACE" 2>&1 || true
+            echo '```'
+            echo '### Потребление'
+            echo '```'
+            kubectl top pods -n "$NAMESPACE" 2>&1 || echo 'metrics-server ещё собирает данные'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          kubectl top nodes > diag/top-nodes.txt 2>&1 || true
+          kubectl top pods -n "$NAMESPACE" > diag/top-pods.txt 2>&1 || true
+
+      - name: диагностика при падении
+        if: failure()
+        run: |
+          mkdir -p diag
+          kubectl get pods -A -o wide          > diag/pods-all.txt      2>&1 || true
+          kubectl -n "$NAMESPACE" describe pods > diag/describe.txt     2>&1 || true
+          kubectl -n "$NAMESPACE" get events --sort-by=.lastTimestamp \
+                                               > diag/events.txt        2>&1 || true
+          helm -n "$NAMESPACE" get manifest myapp > diag/manifest.yaml  2>&1 || true
+          for d in $(kubectl -n "$NAMESPACE" get deploy -o name 2>/dev/null); do
+            n="${d##*/}"
+            kubectl -n "$NAMESPACE" logs "$d" --tail=300 --all-containers=true \
+              > "diag/$n.log" 2>&1 || true
+            kubectl -n "$NAMESPACE" logs "$d" --previous --tail=300 \
+              >> "diag/$n.log" 2>/dev/null || true
+          done
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results
+          path: |
+            reports/
+            diag/
+          retention-days: 7
+
+      - name: удаление кластера
+        if: always()
+        run: k3d cluster delete app || true

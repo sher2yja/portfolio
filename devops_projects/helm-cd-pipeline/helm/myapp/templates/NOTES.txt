@@ -1,0 +1,22 @@
+Релиз "{{ .Release.Name }}" установлен в namespace "{{ .Release.Namespace }}".
+Версия чарта {{ .Chart.Version }}, образы {{ .Values.imageRegistry }}/*:{{ .Values.imageTag }}.
+
+Состояние развёртывания:
+  kubectl get deployments,pods,svc -n {{ .Release.Namespace }}
+
+Установлено:
+{{- range $key, $svc := .Values.services }}
+  - {{ $svc.deploymentName }} / {{ $svc.serviceName }}
+{{- end }}
+
+Доступ к приложению через контроллер Ingress:
+  kubectl port-forward -n ingress-nginx svc/ingress-nginx-controller 8080:80
+  curl http://localhost:8080/api/v1/gateway/hotels
+
+Функциональные тесты (запускаются с хоста, после port-forward выше):
+  newman run tests/application_tests.postman_collection.json \
+         -e tests/application_tests.postman_environment.json
+{{ if not .Values.secret.create }}
+Внимание: secret.create=false — Secret "{{ .Values.secret.name }}" должен быть
+заведён в namespace до установки, иначе поды не стартуют.
+{{- end }}

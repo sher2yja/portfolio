@@ -1,0 +1,19 @@
+{{/*
+init.sql лежит отдельным файлом в files/, а не строкой в values: так его видно
+как обычный SQL и можно править без оглядки на отступы YAML.
+Контейнер postgres монтирует этот ConfigMap в /docker-entrypoint-initdb.d/ и
+выполняет скрипт при первой инициализации тома.
+
+Файл прогоняется через tpl: список создаваемых баз берётся из
+values (postgres.databases), а не дублируется в SQL руками.
+*/}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: database-script
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "myapp.labels" . | nindent 4 }}
+data:
+  init.sql: |
+{{ tpl (.Files.Get "files/init.sql") . | indent 4 }}

@@ -1,0 +1,38 @@
+{{/*
+Ingress разводит по путям два сервиса, стоящие за одним адресом.
+
+Зачем он нужен: коллекция Postman обращается к
+{{ "{{API_HOST}}" }}:{{ "{{USERS_PORT}}" }} и {{ "{{API_HOST}}" }}:{{ "{{GATEWAY_PORT}}" }},
+то есть хост у всех запросов один, а сервиса за ним два — session-service
+для /api/v1/auth и gateway-service для /api/v1/gateway.
+
+host по умолчанию пустой: тогда правило срабатывает при любом заголовке
+Host, и тестам достаточно сходить на адрес самого контроллера — не нужны
+ни внешний DNS, ни правки /etc/hosts в раннере. На стенде, где приложение
+открывается из браузера, host задаётся в values-local.yaml.
+
+TLS не настраивается: внутри кластера ходим по HTTP, поэтому не нужны
+ни cert-manager, ни флаг --insecure у newman.
+*/}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: main-ingress
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "myapp.labels" . | nindent 4 }}
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  rules:
+    - {{ with .Values.ingress.host }}host: {{ . | quote }}
+      {{ end }}http:
+        paths:
+          {{- range .Values.ingress.paths }}
+          - path: {{ .path }}
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ .serviceName }}
+                port:
+                  number: {{ .servicePort }}
+          {{- end }}

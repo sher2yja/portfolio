@@ -1,0 +1,194 @@
+# Доставка: публикация чарта и проверка опубликованного артефакта.
+#
+# Запускается только по тегу вида helm-cd-v1.0.0. В общем репозитории
+# префикс тега играет ту же роль, что path-фильтр у конвейера проверок, —
+# он адресует релиз конкретному проекту.
+#
+# Ручное подтверждение здесь не «кнопка в джобе», а защищённое окружение:
+# у helm-cd-staging заданы обязательные проверяющие, поэтому джоба встаёт
+# в Waiting и ждёт решения человека. Оттуда же приходят и секреты — этим
+# доставка отличается от проверок, где ключ эфемерный и живёт минуты.
+
+name: helm-cd-staging
+
+on:
+  push:
+    tags: ['helm-cd-v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'версия чарта, например 1.0.0'
+        required: true
+
+permissions:
+  contents: write   # приложить .tgz к релизу
+  packages: write   # helm push в ghcr.io
+
+env:
+  PROJECT_DIR: devops_projects/helm-cd-pipeline
+  CHART_DIR: devops_projects/helm-cd-pipeline/helm/myapp
+  NAMESPACE: staging
+
+jobs:
+  staging:
+    name: публикация чарта и проверка выложенного
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment:
+      name: helm-cd-staging
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.16.2
+
+      - name: версия релиза
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ inputs.version }}"
+          else
+            VERSION="${GITHUB_REF_NAME#helm-cd-v}"
+          fi
+          CHART_VERSION=$(grep -E '^version:' "$CHART_DIR/Chart.yaml" | awk '{print $2}')
+          # Дешёвая проверка, которая ловит забытый подъём версии чарта:
+          # тег и Chart.yaml обязаны совпадать, иначе в реестр уедет пакет
+          # с версией, которой нет в истории.
+          if [ "$VERSION" != "$CHART_VERSION" ]; then
+            echo "::error::тег helm-cd-v$VERSION не совпадает с version: $CHART_VERSION в Chart.yaml"
+            exit 1
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "версия релиза: $VERSION"
+
+      - name: упаковка и публикация чарта
+        run: |
+          helm package "$CHART_DIR" --destination dist/
+          echo "${{ secrets.GITHUB_TOKEN }}" | \
+            helm registry login ghcr.io -u "${{ github.actor }}" --password-stdin
+          helm push "dist/myapp-${VERSION}.tgz" oci://ghcr.io/${{ github.repository_owner }}/charts
+
+      # --- ниже: проверка того, что реально выложено -------------------------
+
+      - name: Docker Hub (если заданы учётные данные)
+        if: ${{ secrets.DOCKERHUB_USERNAME != '' }}
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: одноразовый кластер
+        run: |
+          curl -sfL https://raw.githubusercontent.com/k3d-io/k3d/v5.7.4/install.sh | TAG=v5.7.4 bash
+          k3d cluster create staging \
+            --agents 0 \
+            --k3s-arg "--disable=traefik@server:*" \
+            -p "8080:80@loadbalancer" \
+            --wait --timeout 5m
+
+          TAG=$(grep -E '^imageTag:' "$CHART_DIR/values.yaml" | awk '{print $2}' | tr -d '"')
+          echo "IMAGE_TAG=$TAG" >> "$GITHUB_ENV"
+          IMAGES=""
+          for s in session hotel booking payment loyalty report gateway; do
+            docker pull "sherryja/$s-service:$TAG"
+            IMAGES="$IMAGES sherryja/$s-service:$TAG"
+          done
+          # shellcheck disable=SC2086
+          k3d image import -c staging $IMAGES
+          # shellcheck disable=SC2086
+          docker image rm $IMAGES || true
+
+          helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+          helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
+            -n ingress-nginx --create-namespace --version 4.11.3 \
+            --set controller.service.type=LoadBalancer \
+            --set controller.admissionWebhooks.enabled=false \
+            --wait --timeout 5m
+
+      - name: установка ОПУБЛИКОВАННОГО чарта
+        env:
+          APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
+          APP_PUBLIC_KEY: ${{ secrets.APP_PUBLIC_KEY }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          RABBIT_MQ_PASSWORD: ${{ secrets.RABBIT_MQ_PASSWORD }}
+        run: |
+          # Ставим из реестра, а не из каталога репозитория: смысл стадии
+          # в том, чтобы проверить именно тот артефакт, который только что
+          # выложен и который скачает потребитель.
+          printf '%s' "$APP_PRIVATE_KEY" > /tmp/private_key.txt
+          printf '%s' "$APP_PUBLIC_KEY"  > /tmp/public_key.txt
+
+          helm upgrade --install myapp \
+            "oci://ghcr.io/${{ github.repository_owner }}/charts/myapp" \
+            --version "$VERSION" \
+            -n "$NAMESPACE" --create-namespace \
+            -f "$CHART_DIR/values-ci.yaml" \
+            --set-string secret.data.POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
+            --set-string secret.data.RABBIT_MQ_USER=app \
+            --set-string secret.data.RABBIT_MQ_PASSWORD="$RABBIT_MQ_PASSWORD" \
+            --set-file secret.data.PRIVATE_KEY=/tmp/private_key.txt \
+            --set-file secret.data.PUBLIC_KEY=/tmp/public_key.txt \
+            --wait --timeout 15m
+
+          rm -f /tmp/private_key.txt /tmp/public_key.txt
+          kubectl get pods -n "$NAMESPACE"
+
+      - name: проверка выложенного релиза
+        run: |
+          for _ in $(seq 1 20); do
+            curl -sf -o /dev/null http://localhost:8080/api/v1/gateway/hotels && break
+            sleep 3
+          done
+          npm install -g newman
+          mkdir -p reports
+          newman run "$PROJECT_DIR/tests/application_tests.postman_collection.json" \
+            -e "$PROJECT_DIR/tests/application_tests.postman_environment.json" \
+            -r cli,junit --reporter-junit-export reports/newman.xml
+
+      - name: релиз на GitHub
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: dist/myapp-${{ env.VERSION }}.tgz
+          generate_release_notes: true
+
+      - name: сводка
+        if: always()
+        run: |
+          {
+            echo "## Доставка \`${VERSION}\`"
+            echo
+            echo "Чарт: \`oci://ghcr.io/${{ github.repository_owner }}/charts/myapp:${VERSION}\`"
+            echo "Образы: \`sherryja/*:${IMAGE_TAG:-?}\`"
+            echo
+            echo '```'
+            kubectl get pods -n "$NAMESPACE" 2>&1 || true
+            echo '```'
+            echo 'Установить у себя:'
+            echo '```'
+            echo "helm pull oci://ghcr.io/${{ github.repository_owner }}/charts/myapp --version ${VERSION}"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: диагностика при падении
+        if: failure()
+        run: |
+          mkdir -p diag
+          kubectl -n "$NAMESPACE" describe pods > diag/describe.txt 2>&1 || true
+          kubectl -n "$NAMESPACE" get events --sort-by=.lastTimestamp > diag/events.txt 2>&1 || true
+          for d in $(kubectl -n "$NAMESPACE" get deploy -o name 2>/dev/null); do
+            kubectl -n "$NAMESPACE" logs "$d" --tail=300 > "diag/${d##*/}.log" 2>&1 || true
+          done
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: staging-results
+          path: |
+            reports/
+            diag/
+          retention-days: 14
+
+      - name: удаление кластера
+        if: always()
+        run: k3d cluster delete staging || true
