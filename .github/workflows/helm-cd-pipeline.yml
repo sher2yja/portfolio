@@ -54,6 +54,20 @@ jobs:
               hadolint/hadolint:2.12.0 hadolint --config /.hadolint.yaml - < "$f"
           done
 
+      - name: actionlint по своим же workflow
+        run: |
+          # Проверка появилась после того, как первый прогон упал за нулевое
+          # время: контекст secrets недопустим в if, а YAML при этом валиден,
+          # поэтому ни python -c yaml.safe_load, ни глаз ошибку не находят.
+          # GitHub про такое сообщает только строкой "workflow file issue"
+          # без указания места. actionlint знает таблицу доступности
+          # контекстов и показывает файл, строку и причину.
+          curl -sSL -o /tmp/actionlint.tar.gz \
+            https://github.com/rhysd/actionlint/releases/download/v1.7.7/actionlint_1.7.7_linux_amd64.tar.gz
+          tar -xzf /tmp/actionlint.tar.gz -C /tmp actionlint
+          /tmp/actionlint .github/workflows/helm-cd-pipeline.yml \
+                          .github/workflows/helm-cd-staging.yml
+
       - name: shellcheck по скриптам
         run: |
           # wait-for-it.sh — сторонний скрипт, к нему применяем только
@@ -105,6 +119,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     needs: build
+    env:
+      # Секрет проброшен в env именно здесь, а не читается в if напрямую:
+      # контекст secrets в условиях недоступен, и workflow с ним не проходит
+      # валидацию — прогон падает за нулевое время, ещё до создания джобы.
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
     steps:
       - uses: actions/checkout@v4
 
@@ -126,7 +145,7 @@ jobs:
       # Шаг условный: без секретов конвейер всё равно проходит (образы
       # публичные), поэтому форк заводится без предварительной настройки.
       - name: Docker Hub (если заданы учётные данные)
-        if: ${{ secrets.DOCKERHUB_USERNAME != '' }}
+        if: env.DOCKERHUB_USERNAME != ''
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
