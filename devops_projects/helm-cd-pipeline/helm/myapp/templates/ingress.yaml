@@ -36,3 +36,24 @@ spec:
                 port:
                   number: {{ .servicePort }}
           {{- end }}
+          {{- if and .Values.monitoring.enabled .Values.monitoring.grafana.enabled }}
+          {{/*
+          Правило для Grafana добавлено здесь, а не в подчарте, хотя по
+          принадлежности место ему там. Причина в устройстве Helm: подчарт
+          не видит значений родителя иначе как через global, а нужны и
+          className, и host — оба заданы у приложения. Заводить global ради
+          одного правила значит усложнить чарт сильнее, чем эта вложенность
+          того стоит.
+
+          Без этого правила Grafana отвечает только через port-forward,
+          а через Ingress отдаёт 404 — при полностью исправном поде.
+          Найдено при попытке открыть её в браузере со стенда.
+          */}}
+          - path: {{ .Values.monitoring.grafana.ingressPath }}
+            pathType: Prefix
+            backend:
+              service:
+                name: grafana
+                port:
+                  number: {{ .Values.monitoring.grafana.service.port }}
+          {{- end }}
