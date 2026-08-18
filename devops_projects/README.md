@@ -6,6 +6,14 @@
 
 ---
 
+## Главный проект
+
+Единственный, где четыре темы сходятся в одной работе: чарт Kubernetes, конвейер, публикация артефакта в реестр и мониторинг уже развёрнутого приложения.
+
+| Проект | О чём | Технологии |
+|---|---|---|
+| [Непрерывная доставка чартом Helm](./helm-cd-pipeline) | Приложение доставляется чартом через GitHub Actions. Конвейер поднимает одноразовый кластер k3d прямо в раннере, ставит туда собранный артефакт и гоняет тесты по живому; релиз публикуется в реестр и проверяется уже оттуда | ![GitHub Actions](https://img.shields.io/badge/GitHub%20Actions-2088FF?style=flat-square&logo=github-actions&logoColor=white) ![Helm](https://img.shields.io/badge/Helm-0F1689?style=flat-square&logo=helm&logoColor=white) ![k3d](https://img.shields.io/badge/k3d-FFC61C?style=flat-square&logo=k3s&logoColor=black) ![Prometheus](https://img.shields.io/badge/Prometheus-E6522C?style=flat-square&logo=prometheus&logoColor=white) |
+
 ## Kubernetes и оркестрация
 
 | Проект | О чём | Технологии |
@@ -20,7 +28,6 @@
 | Проект | О чём | Технологии |
 |---|---|---|
 | [Ansible и Consul](./ansible-consul-iac) | Узлы настраиваются с управляющей машины ролями. Во второй части сервисы находят друг друга через service mesh, и адрес базы исчезает из конфигурации приложения | ![Ansible](https://img.shields.io/badge/Ansible-EE0000?style=flat-square&logo=ansible&logoColor=white) ![Consul](https://img.shields.io/badge/Consul-F24C53?style=flat-square&logo=consul&logoColor=white) ![Envoy](https://img.shields.io/badge/Envoy-AC6199?style=flat-square&logo=envoyproxy&logoColor=white) |
-| [Непрерывная доставка чартом Helm](./helm-cd-pipeline) | Приложение доставляется чартом через GitHub Actions. Конвейер поднимает одноразовый кластер k3d прямо в раннере, ставит туда собранный артефакт и гоняет тесты по живому; релиз публикуется в реестр и проверяется уже оттуда | ![GitHub Actions](https://img.shields.io/badge/GitHub%20Actions-2088FF?style=flat-square&logo=github-actions&logoColor=white) ![Helm](https://img.shields.io/badge/Helm-0F1689?style=flat-square&logo=helm&logoColor=white) ![k3d](https://img.shields.io/badge/k3d-FFC61C?style=flat-square&logo=k3s&logoColor=black) ![Prometheus](https://img.shields.io/badge/Prometheus-E6522C?style=flat-square&logo=prometheus&logoColor=white) |
 | [Конвейер GitLab CI/CD](./gitlab-cicd-pipeline) | Четыре стадии — стиль, сборка, тесты, доставка — с уведомлением в Telegram после каждой и выкладкой на сервер по кнопке | ![GitLab CI](https://img.shields.io/badge/GitLab%20CI-FC6D26?style=flat-square&logo=gitlab&logoColor=white) ![Bash](https://img.shields.io/badge/Bash-4EAA25?style=flat-square&logo=gnu-bash&logoColor=white) ![SSH](https://img.shields.io/badge/SSH-000000?style=flat-square) |
 
 ## Мониторинг
