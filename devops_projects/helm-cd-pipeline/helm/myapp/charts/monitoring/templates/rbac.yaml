@@ -1,0 +1,113 @@
+{{- if .Values.prometheus.enabled }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "monitoring.fullname" . }}-prometheus
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "monitoring.labels" . | nindent 4 }}
+---
+{{/*
+ClusterRole, а не Role, и это вынужденно: role: node в service discovery
+обращается к объектам Node, а Node — ресурс кластерного уровня, неймспейсной
+ролью его не выдать.
+
+Глаголы только на чтение. create/update/delete здесь были бы прямой дырой:
+под с таким токеном может пересоздать любой Deployment в кластере, а токен
+лежит в файловой системе пода и виден любому, кто получит в него exec.
+*/}}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "monitoring.fullname" . }}-prometheus
+  labels:
+    {{- include "monitoring.labels" . | nindent 4 }}
+rules:
+  # Обнаружение целей. services и endpoints сейчас не используются, но без
+  # них любая будущая job с role: endpoints молча дала бы ноль целей вместо
+  # внятной ошибки о нехватке прав.
+  - apiGroups: [""]
+    resources:
+      - nodes
+      - services
+      - endpoints
+      - pods
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["discovery.k8s.io"]
+    resources: ["endpointslices"]
+    verbs: ["get", "list", "watch"]
+
+  # Чтение метрик у kubelet. Ресурс nodes/metrics закрывает /metrics,
+  # /metrics/cadvisor и /metrics/resource. Без него job kubelet-cadvisor
+  # вернёт 401 Unauthorized, а цель окажется DOWN.
+  - apiGroups: [""]
+    resources: ["nodes/metrics"]
+    verbs: ["get"]
+
+  # Запасной путь через прокси API-сервера, если в кластере закрыт прямой
+  # доступ на порт 10250: тогда job переписывается на kubernetes.default.svc
+  # без правки прав.
+  - apiGroups: [""]
+    resources: ["nodes/proxy"]
+    verbs: ["get"]
+
+  # Обращения к эндпоинтам, у которых нет объекта в API.
+  - nonResourceURLs: ["/metrics", "/metrics/cadvisor"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "monitoring.fullname" . }}-prometheus
+  labels:
+    {{- include "monitoring.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "monitoring.fullname" . }}-prometheus
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "monitoring.fullname" . }}-prometheus
+    namespace: {{ .Release.Namespace }}
+{{- end }}
+{{- if .Values.promtail.enabled }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "monitoring.fullname" . }}-promtail
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "monitoring.labels" . | nindent 4 }}
+---
+{{/*
+У promtail права намеренно уже, чем у Prometheus: ему нужны только поды,
+чтобы построить путь к файлу лога, и не нужны ни узлы, ни метрики kubelet.
+Общий ServiceAccount на двоих был бы проще в написании и хуже по существу.
+*/}}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "monitoring.fullname" . }}-promtail
+  labels:
+    {{- include "monitoring.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "monitoring.fullname" . }}-promtail
+  labels:
+    {{- include "monitoring.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "monitoring.fullname" . }}-promtail
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "monitoring.fullname" . }}-promtail
+    namespace: {{ .Release.Namespace }}
+{{- end }}

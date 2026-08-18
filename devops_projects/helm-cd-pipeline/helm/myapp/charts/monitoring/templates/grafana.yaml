@@ -1,0 +1,184 @@
+{{- if .Values.grafana.enabled }}
+{{/*
+Источники данных задаются через provisioning, и uid у них указан ЯВНО.
+
+Это не косметика, а единственный способ сделать дашборды переносимыми.
+Без поля uid Grafana генерирует его случайно при первом старте. Дашборд,
+в котором uid источника зашит (а он зашит в любом дашборде, выгруженном
+из интерфейса), после каждого пересоздания пода показывал бы на всех
+панелях "Datasource <случайный-uid> was not found" — при полностью
+исправных Prometheus и Loki.
+
+Именно на этом дашборд, выгруженный из работающей Grafana, обычно
+и не переносится в другую установку.
+*/}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "monitoring.fullname" . }}-grafana-provisioning
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "monitoring.labels" . | nindent 4 }}
+data:
+  datasources.yaml: |
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        type: prometheus
+        uid: prometheus
+        access: proxy
+        url: http://prometheus:{{ .Values.prometheus.service.port }}
+        isDefault: true
+        # editable: false — чтобы источник нельзя было поправить руками
+        # в интерфейсе. Правка пережила бы ровно до перезапуска пода,
+        # после чего provisioning вернул бы всё обратно, и человек искал бы
+        # причину в своих действиях, а не в устройстве стенда.
+        editable: false
+        jsonData:
+          timeInterval: 15s
+      - name: Loki
+        type: loki
+        uid: loki
+        access: proxy
+        url: http://loki:{{ .Values.loki.service.port }}
+        editable: false
+  dashboards.yaml: |
+    apiVersion: 1
+    providers:
+      - name: helm-cd
+        orgId: 1
+        folder: helm-cd
+        type: file
+        disableDeletion: true
+        allowUiUpdates: false
+        options:
+          path: /var/lib/grafana/dashboards
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "monitoring.fullname" . }}-grafana-dashboards
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "monitoring.labels" . | nindent 4 }}
+{{/*
+Дашборды кладутся поимённо, а не одним вызовом AsConfig, потому что в них
+тоже есть сентинел __NAMESPACE__ — в запросе логов и в фильтрах по метрикам
+контейнеров. AsConfig отдал бы файлы как есть, и дашборд оказался бы привязан
+к тому неймспейсу, в котором его когда-то выгрузили.
+
+Через tpl эти файлы гнать по-прежнему нельзя: в них есть выражения Grafana
+и LogQL в двойных скобках, например line_format с {{`{{.service}}`}}.
+*/}}
+data:
+{{- range $path, $_ := .Files.Glob "dashboards/*.json" }}
+  {{ base $path }}: |
+{{ $.Files.Get $path | replace "__NAMESPACE__" $.Release.Namespace | indent 4 }}
+{{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "monitoring.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "monitoring.selector" (dict "component" "grafana" "root" $) | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.grafana.service.port }}
+      targetPort: 3000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "monitoring.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "monitoring.selector" (dict "component" "grafana" "root" $) | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "monitoring.labels" . | nindent 8 }}
+        app.kubernetes.io/component: grafana
+      annotations:
+        checksum/dashboards: {{ (.Files.Glob "dashboards/*.json").AsConfig | sha256sum }}
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 472
+        fsGroup: 472
+      containers:
+        - name: grafana
+          image: {{ .Values.grafana.image }}
+          env:
+            - name: GF_SECURITY_ADMIN_USER
+              value: {{ .Values.grafana.adminUser | quote }}
+            - name: GF_SECURITY_ADMIN_PASSWORD
+              value: {{ .Values.grafana.adminPassword | quote }}
+            # Grafana живёт за общим Ingress по подпути, поэтому ей нужно
+            # знать свой внешний адрес: без serve_from_sub_path все ссылки
+            # внутри интерфейса вели бы в корень и ломались.
+            - name: GF_SERVER_ROOT_URL
+              value: "%(protocol)s://%(domain)s{{ .Values.grafana.ingressPath }}"
+            - name: GF_SERVER_SERVE_FROM_SUB_PATH
+              value: "true"
+            # Стенд поднимается и сносится часто, отправлять телеметрию
+            # и ходить за списком плагинов ему незачем.
+            - name: GF_ANALYTICS_REPORTING_ENABLED
+              value: "false"
+            - name: GF_ANALYTICS_CHECK_FOR_UPDATES
+              value: "false"
+          ports:
+            - name: http
+              containerPort: 3000
+          readinessProbe:
+            httpGet: { path: /api/health, port: 3000 }
+            periodSeconds: 5
+            failureThreshold: 30
+          livenessProbe:
+            httpGet: { path: /api/health, port: 3000 }
+            initialDelaySeconds: 60
+            periodSeconds: 20
+            failureThreshold: 5
+          resources:
+            {{- toYaml .Values.grafana.resources | nindent 12 }}
+          volumeMounts:
+            - { name: provisioning-datasources, mountPath: /etc/grafana/provisioning/datasources }
+            - { name: provisioning-dashboards, mountPath: /etc/grafana/provisioning/dashboards }
+            # data объявлен ПЕРЕД dashboards намеренно: монтирование
+            # родительского каталога после вложенного скрыло бы вложенный,
+            # и Grafana не нашла бы ни одного дашборда при исправном
+            # ConfigMap — ошибка, которую видно только изнутри пода.
+            - { name: data, mountPath: /var/lib/grafana }
+            - { name: dashboards, mountPath: /var/lib/grafana/dashboards }
+      volumes:
+        # Один ConfigMap монтируется дважды с разными items: каталоги
+        # provisioning у Grafana раздельные, и положить в них оба файла
+        # одним монтированием нельзя.
+        - name: provisioning-datasources
+          configMap:
+            name: {{ include "monitoring.fullname" . }}-grafana-provisioning
+            items:
+              - { key: datasources.yaml, path: datasources.yaml }
+        - name: provisioning-dashboards
+          configMap:
+            name: {{ include "monitoring.fullname" . }}-grafana-provisioning
+            items:
+              - { key: dashboards.yaml, path: dashboards.yaml }
+        - name: dashboards
+          configMap:
+            name: {{ include "monitoring.fullname" . }}-grafana-dashboards
+        - name: data
+          emptyDir: {}
+{{- end }}

@@ -1,0 +1,120 @@
+{{- if .Values.alertmanager.enabled }}
+{{/*
+Конфигурация Alertmanager лежит в Secret, а не в ConfigMap, и это не
+перестраховка: при включённой доставке в ней находится токен бота.
+ConfigMap читается любым, у кого есть get configmaps в неймспейсе, и целиком
+попадает в вывод helm get manifest — то есть в логи конвейера.
+
+required на значениях обязателен по той же причине, по какой он стоит на
+ключах приложения: с включённой доставкой и пустым токеном чарт должен
+падать сразу и с внятным текстом, а не ставиться молча с приёмником,
+который никогда ничего не отправит.
+*/}}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "monitoring.fullname" . }}-alertmanager
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "monitoring.labels" . | nindent 4 }}
+type: Opaque
+stringData:
+  alertmanager.yml: |
+{{- if .Values.alertmanager.telegram.enabled }}
+{{ .Files.Get "files/alertmanager-telegram.yml"
+     | replace "__TELEGRAM_BOT_TOKEN__" (required "monitoring.alertmanager.telegram.botToken не задан. Токен не хранится в репозитории — передайте --set monitoring.alertmanager.telegram.botToken=<токен от @BotFather>" .Values.alertmanager.telegram.botToken)
+     | replace "__TELEGRAM_CHAT_ID__" (required "monitoring.alertmanager.telegram.chatId не задан" (.Values.alertmanager.telegram.chatId | toString))
+     | indent 4 }}
+{{- else }}
+{{ .Files.Get "files/alertmanager-null.yml" | indent 4 }}
+{{- end }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "monitoring.fullname" . }}-alertmanager-templates
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "monitoring.labels" . | nindent 4 }}
+data:
+  telegram.tmpl: |
+{{ .Files.Get "files/telegram.tmpl" | indent 4 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: alertmanager
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "monitoring.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "monitoring.selector" (dict "component" "alertmanager" "root" $) | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.alertmanager.service.port }}
+      targetPort: 9093
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alertmanager
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "monitoring.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "monitoring.selector" (dict "component" "alertmanager" "root" $) | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "monitoring.labels" . | nindent 8 }}
+        app.kubernetes.io/component: alertmanager
+      annotations:
+        # Контрольная сумма считается по значениям, а не по отрендеренному
+        # секрету: так под пересоздаётся при смене токена, а сам токен
+        # в аннотации не появляется — аннотации видны в kubectl describe.
+        checksum/config: {{ printf "%v-%v-%v" .Values.alertmanager.telegram.enabled (.Values.alertmanager.telegram.botToken | sha256sum) .Values.alertmanager.telegram.chatId | sha256sum }}
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        fsGroup: 65534
+      containers:
+        - name: alertmanager
+          image: {{ .Values.alertmanager.image }}
+          args:
+            - --config.file=/etc/alertmanager/alertmanager.yml
+            - --storage.path=/alertmanager
+          ports:
+            - name: http
+              containerPort: 9093
+          readinessProbe:
+            httpGet: { path: /-/ready, port: 9093 }
+            periodSeconds: 5
+            failureThreshold: 20
+          livenessProbe:
+            httpGet: { path: /-/healthy, port: 9093 }
+            periodSeconds: 20
+            failureThreshold: 5
+          resources:
+            {{- toYaml .Values.alertmanager.resources | nindent 12 }}
+          volumeMounts:
+            - { name: config,    mountPath: /etc/alertmanager/alertmanager.yml, subPath: alertmanager.yml }
+            - { name: templates, mountPath: /etc/alertmanager/templates }
+            - { name: data,      mountPath: /alertmanager }
+      volumes:
+        - name: config
+          secret:
+            secretName: {{ include "monitoring.fullname" . }}-alertmanager
+        - name: templates
+          configMap:
+            name: {{ include "monitoring.fullname" . }}-alertmanager-templates
+        - name: data
+          emptyDir: {}
+{{- end }}

@@ -1,0 +1,56 @@
+# Loki, одиночный экземпляр с файловым хранилищем.
+#
+# Отличие от конфигурации в исходном проекте на Compose — появившаяся ретенция.
+# Там логи копились бессрочно, что для стенда, живущего часами, кончилось бы
+# заполнением диска узла: семь Spring Boot пишут в stdout охотно.
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+  # warn, а не info: на info Loki комментирует каждый принятый поток,
+  # и его собственные логи начинают заметно превышать полезные.
+  log_level: warn
+
+common:
+  instance_addr: 127.0.0.1
+  path_prefix: /loki
+  storage:
+    filesystem:
+      chunks_directory: /loki/chunks
+      rules_directory: /loki/rules
+  replication_factor: 1
+  ring:
+    kvstore:
+      store: inmemory
+
+schema_config:
+  configs:
+    - from: 2024-01-01
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
+limits_config:
+  retention_period: 24h
+  ingestion_rate_mb: 4
+  ingestion_burst_size_mb: 8
+  # Отбрасываем записи старше суток. Без этого перезапуск promtail с
+  # накопленными позициями залил бы в Loki историю, которая уже не нужна.
+  reject_old_samples: true
+  reject_old_samples_max_age: 24h
+
+compactor:
+  working_directory: /loki/compactor
+  # Ретенция не работает сама по себе: удаляет данные именно compactor,
+  # и без retention_enabled настройка retention_period выше молча
+  # не производит никакого эффекта.
+  retention_enabled: true
+  delete_request_store: filesystem
+  compaction_interval: 10m
+  retention_delete_delay: 1h
+
+analytics:
+  reporting_enabled: false

@@ -1,0 +1,154 @@
+{{- if .Values.prometheus.enabled }}
+{{/*
+Конфигурация и правила приходят из files/ плоскими файлами, а параметризуются
+функцией replace по сентинелу __NAMESPACE__ — не через tpl.
+
+Это главное правило всего подчарта, и оно не про Kubernetes, а про Helm.
+В prometheus.yml, alert.rules.yml и telegram.tmpl встречаются выражения
+в двойных фигурных скобках: {{`{{ $labels.service }}`}}, {{`{{ $value }}`}},
+{{`{{ template "telegram.message" . }}`}}. Это шаблоны Prometheus и
+Alertmanager. Прогнать такой файл через tpl — значит отдать их движку Helm,
+который упадёт на первом же $labels с nil pointer.
+
+Побочная выгода правила крупнее самого правила: files/prometheus.yml остаётся
+валидным самостоятельным файлом, и его можно проверить promtool до всякого
+Helm — что и делается в стадии сборки конвейера.
+*/}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "monitoring.fullname" . }}-prometheus
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "monitoring.labels" . | nindent 4 }}
+data:
+  prometheus.yml: |
+{{ .Files.Get "files/prometheus.yml" | replace "__NAMESPACE__" .Release.Namespace | indent 4 }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "monitoring.fullname" . }}-prometheus-rules
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "monitoring.labels" . | nindent 4 }}
+data:
+  alert.rules.yml: |
+{{ .Files.Get "files/alert.rules.yml" | replace "__NAMESPACE__" .Release.Namespace | indent 4 }}
+{{- if .Values.prometheus.demoAlert.enabled }}
+  alert.rules.demo.yml: |
+{{ .Files.Get "files/alert.rules.demo.yml" | indent 4 }}
+{{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "monitoring.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "monitoring.selector" (dict "component" "prometheus" "root" $) | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.prometheus.service.port }}
+      targetPort: 9090
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "monitoring.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  strategy:
+    # Recreate, а не RollingUpdate: у Prometheus каталог данных занят
+    # эксклюзивно, и второй под, поднятый рядом со старым, упал бы на
+    # блокировке. Простой в несколько секунд здесь безобиден.
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "monitoring.selector" (dict "component" "prometheus" "root" $) | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "monitoring.labels" . | nindent 8 }}
+        app.kubernetes.io/component: prometheus
+      annotations:
+        # Пересоздать под при изменении конфигурации или правил. Без этой
+        # аннотации helm upgrade обновил бы ConfigMap, а Prometheus продолжил
+        # бы работать со старым конфигом до ближайшего перезапуска — команда
+        # отработала бы успешно, не сделав заявленного.
+        checksum/config: {{ .Files.Get "files/prometheus.yml" | sha256sum }}
+        checksum/rules: {{ printf "%s%s" (.Files.Get "files/alert.rules.yml") (.Files.Get "files/alert.rules.demo.yml") | sha256sum }}
+    spec:
+      serviceAccountName: {{ include "monitoring.fullname" . }}-prometheus
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        fsGroup: 65534
+      containers:
+        - name: prometheus
+          image: {{ .Values.prometheus.image }}
+          args:
+            - --config.file=/etc/prometheus/prometheus.yml
+            - --storage.tsdb.path=/prometheus
+            - --storage.tsdb.retention.time={{ .Values.prometheus.retention }}
+            - --storage.tsdb.retention.size={{ .Values.prometheus.retentionSize }}
+            # Нужен, чтобы перечитывать конфигурацию без перезапуска пода:
+            # curl -XPOST localhost:9090/-/reload
+            - --web.enable-lifecycle
+          ports:
+            - name: http
+              containerPort: 9090
+          # Готовность и живость разведены по разным эндпоинтам намеренно.
+          # /-/ready становится истинным только после загрузки блоков TSDB,
+          # что на старте занимает секунды; /-/healthy отвечает сразу.
+          readinessProbe:
+            httpGet: { path: /-/ready, port: 9090 }
+            periodSeconds: 5
+            failureThreshold: 30
+          livenessProbe:
+            httpGet: { path: /-/healthy, port: 9090 }
+            periodSeconds: 20
+            failureThreshold: 5
+          resources:
+            {{- toYaml .Values.prometheus.resources | nindent 12 }}
+          volumeMounts:
+            - { name: config, mountPath: /etc/prometheus }
+            - { name: rules,  mountPath: /etc/prometheus/rules }
+            - { name: data,   mountPath: /prometheus }
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "monitoring.fullname" . }}-prometheus
+        - name: rules
+          configMap:
+            name: {{ include "monitoring.fullname" . }}-prometheus-rules
+        - name: data
+        {{- if .Values.prometheus.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "monitoring.fullname" . }}-prometheus
+        {{- else }}
+          emptyDir: {}
+        {{- end }}
+{{- if .Values.prometheus.persistence.enabled }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "monitoring.fullname" . }}-prometheus
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "monitoring.labels" . | nindent 4 }}
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: {{ .Values.prometheus.persistence.size }}
+{{- end }}
+{{- end }}

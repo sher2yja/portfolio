@@ -1,0 +1,22 @@
+{{/*
+Шаблон сообщения для Telegram.
+
+Двойные скобки здесь принадлежат Alertmanager. Файл поэтому лежит рядом
+с конфигурацией, а не внутри шаблона Helm, и подключается через .Files.Get
+без tpl — иначе Helm попытался бы разобрать .Status и .GroupLabels как свои
+и упал бы с nil pointer.
+
+parse_mode: HTML задан в конфигурации приёмника, отсюда теги <b> и <code>.
+*/}}
+{{ define "telegram.message" }}
+{{ if eq .Status "firing" }}🔥 <b>СРАБОТАЛ АЛЕРТ</b>{{ else }}✅ <b>ОТБОЙ</b>{{ end }}
+
+<b>Правило:</b> {{ .GroupLabels.alertname }}
+<b>Важность:</b> {{ (index .Alerts 0).Labels.severity }}
+<b>Что случилось:</b> {{ (index .Alerts 0).Annotations.summary }}
+<b>Время:</b> {{ (index .Alerts 0).StartsAt.Format "15:04:05" }}
+{{ if eq .Status "firing" }}
+<b>Объект:</b> <code>{{ with (index .Alerts 0).Labels.service }}{{ . }}{{ else }}{{ with (index .Alerts 0).Labels.node }}{{ . }}{{ else }}{{ (index .Alerts 0).Labels.instance }}{{ end }}{{ end }}</code>
+<b>Подробнее:</b> {{ (index .Alerts 0).Annotations.description }}
+{{ end }}
+{{ end }}

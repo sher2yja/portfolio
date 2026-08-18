@@ -216,6 +216,43 @@
         }
       },
       "response": []
+    },
+    {
+      "name": "Get Version",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{API_HOST}}:{{GATEWAY_PORT}}/api/v1/gateway/version",
+          "host": [
+            "{{API_HOST}}"
+          ],
+          "port": "{{GATEWAY_PORT}}",
+          "path": [
+            "api",
+            "v1",
+            "gateway",
+            "version"
+          ]
+        },
+        "description": "Отличает доставленную версию от просто зелёной джобы. Значение приходит из ConfigMap чарта и равно тегу образа, который собрал конвейер."
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Deployed version matches the released one\", function() {",
+              "    pm.response.to.have.status(200);",
+              "    const expected = pm.environment.get(\"EXPECTED_VERSION\");",
+              "    pm.expect(pm.response.json().version).to.eql(expected);",
+              "});"
+            ]
+          }
+        }
+      ]
     }
   ],
   "event": [

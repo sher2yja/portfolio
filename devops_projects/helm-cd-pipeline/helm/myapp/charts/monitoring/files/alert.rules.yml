@@ -1,0 +1,104 @@
+# Правила оповещений.
+#
+# Из конфигурации мониторинга на Compose сюда не перенесено ни одного правила,
+# и это осознанно. Там они выглядели так:
+#
+#   node_memory_MemAvailable_bytes / 1024 / 1024 > 1
+#   sum(container_memory_working_set_bytes) > 1
+#   (...) * 100 < 100
+#
+# Каждое истинно по построению: свободной памяти всегда больше одного байта,
+# потребление контейнеров всегда больше одного байта, загрузка процессора
+# всегда меньше 100% от суммы всех ядер. Такие правила писались ради того,
+# чтобы на скриншоте был хоть один сработавший алерт. Правило, которое горит
+# всегда, неотличимо от сломанного мониторинга, поэтому ниже написаны новые.
+#
+# Одно правило, которое действительно срабатывает всегда, всё же оставлено,
+# но вынесено в отдельный файл alert.rules.demo.yml под своим именем.
+groups:
+  - name: application
+    rules:
+      # Скрейп идёт по аннотациям пода: раз цель существует, значит под
+      # существует и Prometheus его нашёл. up == 0 означает ровно одно —
+      # порт открыт, actuator не отвечает.
+      #
+      # Две минуты, чтобы не стрелять на штатном RollingUpdate.
+      - alert: ServiceDown
+        expr: up{job="spring-services"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Сервис {{ $labels.service }} не отдаёт метрики"
+          description: "Не удаётся снять /actuator/prometheus с пода {{ $labels.pod }} ({{ $labels.instance }}) более двух минут."
+
+      # Куча ограничена -Xmx192m из JAVA_TOOL_OPTIONS, лимит контейнера 384Ми.
+      # Устойчивые 90% кучи — это либо предстоящий OOMKill, либо сборщик мусора,
+      # который съест процессор.
+      #
+      # Условие "> 0" в знаменателе не косметика: у отдельных пулов
+      # jvm_memory_max_bytes равен -1 (пул без верхней границы), и без фильтра
+      # сумма занижается, а отношение уезжает выше единицы на ровном месте.
+      - alert: JvmHeapPressure
+        expr: |
+          sum by (service) (jvm_memory_used_bytes{area="heap"})
+            /
+          sum by (service) (jvm_memory_max_bytes{area="heap"} > 0)
+            > 0.9
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.service }}: занято {{ $value | humanizePercentage }} кучи"
+          description: "Куча ограничена -Xmx192m. Дальше либо OOMKill, либо деградация из-за постоянных сборок мусора."
+
+      # resets() считает, сколько раз ряд уменьшился. process_uptime_seconds
+      # растёт монотонно и обнуляется ровно при перезапуске процесса, поэтому
+      # три обнуления за пятнадцать минут — это и есть CrashLoopBackOff.
+      #
+      # Канонический kube_pod_container_status_restarts_total здесь недоступен:
+      # он приходит от kube-state-metrics, которого в составе нет. Заводить его
+      # ради одного правила — лишние десятки мегабайт на узле, где памяти
+      # и без того впритык.
+      - alert: PodCrashLooping
+        expr: resets(process_uptime_seconds{job="spring-services"}[15m]) > 2
+        for: 0m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.service }} перезапускался {{ $value }} раза за пятнадцать минут"
+          description: "Под {{ $labels.pod }} на узле {{ $labels.node }}. Смотреть: kubectl -n __NAMESPACE__ logs {{ $labels.pod }} --previous"
+
+      # Контейнер у лимита. Дополняет предыдущее правило: ловит момент ДО
+      # OOMKill, а не после. Источник — kubelet, поэтому правило работает
+      # и для postgres с rabbitmq, у которых actuator'а нет вовсе.
+      - alert: ContainerNearMemoryLimit
+        expr: |
+          max by (namespace, pod, container) (
+            container_memory_working_set_bytes{namespace="__NAMESPACE__", container!=""}
+          )
+            /
+          max by (namespace, pod, container) (
+            container_spec_memory_limit_bytes{namespace="__NAMESPACE__", container!=""} > 0
+          )
+            > 0.9
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.container }} в поде {{ $labels.pod }} занял {{ $value | humanizePercentage }} своего лимита"
+          description: "За лимитом OOMKill. Смотреть: kubectl top pod {{ $labels.pod }} -n {{ $labels.namespace }}"
+
+  - name: infrastructure
+    rules:
+      # Порог в процентах, а не в мегабайтах: узлы стенда по 3 ГБ, раннер —
+      # 16 ГБ, одно абсолютное число не подошло бы обеим площадкам.
+      - alert: NodeMemoryLow
+        expr: |
+          node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes * 100 < 15
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "На узле {{ $labels.node }} свободно меньше 15% памяти"
+          description: "Следующий шаг планировщика — вытеснение подов. Смотреть: kubectl top nodes"

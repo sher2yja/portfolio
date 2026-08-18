@@ -178,6 +178,7 @@ jobs:
           mkdir -p reports
           newman run "$PROJECT_DIR/tests/application_tests.postman_collection.json" \
             -e "$PROJECT_DIR/tests/application_tests.postman_environment.json" \
+            --env-var "EXPECTED_VERSION=$IMAGE_TAG" \
             -r cli,junit --reporter-junit-export reports/newman.xml
 
       - name: релиз на GitHub

@@ -1,0 +1,139 @@
+# Конфигурация Prometheus.
+#
+# Главное отличие от той же схемы в Docker Compose: статические цели вида
+# gateway-service:8087 заменены на kubernetes_sd_configs. Причина не в моде.
+# В Compose адрес сервиса постоянен, а в Kubernetes под пересоздаётся при
+# каждом обновлении и получает новый IP. Статический список пришлось бы
+# править при добавлении каждого сервиса, а при replicas > 1 он перестал бы
+# работать вовсе: DNS-имя сервиса отдало бы один случайный под из нескольких,
+# и метрики остальных потерялись бы молча.
+#
+# __NAMESPACE__ подставляет шаблон чарта функцией replace, а не tpl: ниже
+# встречаются выражения Prometheus в двойных фигурных скобках, и tpl
+# попытался бы разобрать их как шаблон Helm.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  scrape_timeout: 10s
+
+rule_files:
+  - /etc/prometheus/rules/*.yml
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ['alertmanager:9093']
+
+scrape_configs:
+  # ---------------------------------------------------------------------------
+  # Приложение. Отбор не по списку имён, а по аннотациям пода: чарт сам решает,
+  # у кого есть actuator, проставляя podAnnotations в values. Восьмой сервис
+  # попадёт в мониторинг без единой правки этого файла.
+  - job_name: 'spring-services'
+    kubernetes_sd_configs:
+      - role: pod
+        namespaces:
+          names: ['__NAMESPACE__']
+    relabel_configs:
+      # keep, а не drop: по умолчанию не скрейпим ничего. С обратной логикой
+      # Prometheus ломился бы на 5432 к postgres и на 5672 к rabbitmq и держал
+      # бы половину целей в состоянии DOWN.
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+        action: keep
+        regex: "true"
+
+      # Завершившиеся поды отбрасываем: их адрес ещё виден в API, но скрейп
+      # по нему даёт connection refused и, как следствие, ложный ServiceDown.
+      - source_labels: [__meta_kubernetes_pod_phase]
+        action: drop
+        regex: (Succeeded|Failed)
+
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+        action: replace
+        target_label: __metrics_path__
+        regex: (.+)
+
+      # Подмена порта. По умолчанию __address__ — это <podIP>:<первый порт
+      # контейнера>. Незахватывающая группа отрезает уже имеющийся порт,
+      # иначе получилось бы 10.42.0.9:8087:8087.
+      - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+        action: replace
+        regex: ([^:]+)(?::\d+)?;(\d+)
+        replacement: $1:$2
+        target_label: __address__
+
+      - source_labels: [__meta_kubernetes_namespace]
+        action: replace
+        target_label: namespace
+      - source_labels: [__meta_kubernetes_pod_name]
+        action: replace
+        target_label: pod
+      - source_labels: [__meta_kubernetes_pod_node_name]
+        action: replace
+        target_label: node
+
+      # Главная метка для графиков и правил. Чарт вешает на под метку
+      # svc: gateway|session|booking|report, и она стабильна между
+      # пересозданиями пода — в отличие от pod и instance.
+      - source_labels: [__meta_kubernetes_pod_label_svc]
+        action: replace
+        target_label: service
+
+  # ---------------------------------------------------------------------------
+  # Метрики контейнеров. Отдельный контейнер cAdvisor, как это делается в
+  # Compose, здесь не нужен: cAdvisor встроен в kubelet и доступен на
+  # /metrics/cadvisor того же порта 10250.
+  #
+  # role: node сам проставляет __address__ = <InternalIP>:10250, менять его
+  # не требуется — только путь.
+  - job_name: 'kubelet-cadvisor'
+    scheme: https
+    kubernetes_sd_configs:
+      - role: node
+    authorization:
+      type: Bearer
+      credentials_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+    tls_config:
+      ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+      # insecure_skip_verify здесь обязателен, и это не небрежность.
+      # Serving-сертификат kubelet в k3s подписан отдельным центром, а в
+      # ca.crt у пода лежит центр кластера. Проверка имени не прошла бы и по
+      # второй причине: сертификат выписан на имя узла, а обращаемся по адресу.
+      insecure_skip_verify: true
+    relabel_configs:
+      - action: labelmap
+        regex: __meta_kubernetes_node_label_(.+)
+      - source_labels: [__meta_kubernetes_node_name]
+        action: replace
+        target_label: node
+      - target_label: __metrics_path__
+        replacement: /metrics/cadvisor
+
+  # ---------------------------------------------------------------------------
+  # Метрики узла. node-exporter поднимается DaemonSet'ом в том же неймспейсе;
+  # отбираем его по метке, а не по аннотации, чтобы он попал в собственную job
+  # и правила про узел не смешивались с правилами про сервисы.
+  - job_name: 'node-exporter'
+    kubernetes_sd_configs:
+      - role: pod
+        namespaces:
+          names: ['__NAMESPACE__']
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_label_app]
+        action: keep
+        regex: node-exporter
+      - source_labels: [__address__]
+        action: replace
+        regex: ([^:]+)(?::\d+)?
+        replacement: $1:9100
+        target_label: __address__
+      - source_labels: [__meta_kubernetes_pod_node_name]
+        action: replace
+        target_label: node
+
+  # ---------------------------------------------------------------------------
+  # Сам Prometheus. Цель дешёвая, но именно она отвечает на вопрос, молчит
+  # мониторинг потому, что всё хорошо, или потому, что он лёг.
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']

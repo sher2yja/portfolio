@@ -34,3 +34,7 @@ env:
   # -noverify использовать нельзя: опция удалена в Java 13, а шесть образов
   # из семи работают на 17.
   JAVA_TOOL_OPTIONS: "-Xmx192m -Xss512k -XX:MaxMetaspaceSize=128m -XX:TieredStopAtLevel=1"
+
+# Мониторинг включён: на этой площадке он и снимается.
+monitoring:
+  enabled: true

@@ -1,0 +1,136 @@
+# Значения подчарта мониторинга.
+#
+# Ключ верхнего уровня в родительском чарте — monitoring, поэтому всё,
+# что здесь, переопределяется как monitoring.<путь>:
+#   --set monitoring.prometheus.retention=2h
+#
+# Весь стек выключен по умолчанию (condition: monitoring.enabled в
+# зависимостях родителя) и включается на площадках: values-ci.yaml
+# и values-local.yaml.
+
+# У каждого компонента свой enabled, а не один общий флаг. Это нужно
+# на стенде: если памяти не хватит, первым выключается сбор логов
+# (Loki с Promtail — самая дорогая пара), а метрики остаются.
+prometheus:
+  enabled: true
+  image: prom/prometheus:v2.53.0
+  # Ретенция маленькая намеренно. Это стенд, а не рабочий мониторинг:
+  # хранить месяц истории некуда и незачем, а место на узле ограничено.
+  retention: 6h
+  # Страховка на случай, если рядов внезапно станет больше, чем ожидалось:
+  # по размеру ретенция сработает раньше, чем по времени.
+  retentionSize: 512MB
+  demoAlert:
+    # Правило, которое срабатывает всегда, — им проверяется маршрут
+    # доставки оповещений. Подробности в files/alert.rules.demo.yml.
+    enabled: true
+  service:
+    port: 9090
+  resources:
+    requests:
+      cpu: 100m
+      memory: 192Mi
+    limits:
+      cpu: 500m
+      memory: 384Mi
+  persistence:
+    # emptyDir, а не PVC, и это осознанный выбор, а не упущение.
+    #
+    # В одноразовом кластере конвейера том пережил бы ровно один прогон.
+    # На стенде local-path-provisioner привязывает том к конкретному узлу
+    # через nodeAffinity — под с PVC перестаёт быть перемещаемым и при
+    # нехватке памяти на "своём" узле не переедет, а зависнет в Pending.
+    # Цена — потеря истории при перезапуске пода — при ретенции в шесть
+    # часов близка к нулю.
+    enabled: false
+    size: 2Gi
+
+alertmanager:
+  enabled: true
+  image: prom/alertmanager:v0.27.0
+  service:
+    port: 9093
+  telegram:
+    # Выключено по умолчанию, и это не перестраховка: с включённой доставкой
+    # и пустым токеном чарт обязан падать на required, а не ставиться молча
+    # с нерабочим приёмником.
+    #
+    # Учётные данные приходят снаружи ровно тем же путём, что и ключи
+    # подписи JWT у приложения, и в репозитории их нет:
+    #   --set monitoring.alertmanager.telegram.botToken="$TG_BOT_TOKEN"
+    #   --set monitoring.alertmanager.telegram.chatId="$TG_CHAT_ID"
+    enabled: false
+    botToken: ""
+    chatId: ""
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      cpu: 100m
+      memory: 64Mi
+
+loki:
+  enabled: true
+  # Версия 3.x, а не 2.x: в третьей ветке compactor.shared_store удалён
+  # и заменён на delete_request_store. Конфиг, написанный по-старому,
+  # перестал бы читаться при первом же обновлении тега.
+  image: grafana/loki:3.1.1
+  service:
+    port: 3100
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 300m
+      memory: 256Mi
+  persistence:
+    enabled: false
+    size: 2Gi
+
+promtail:
+  enabled: true
+  image: grafana/promtail:3.1.1
+  resources:
+    requests:
+      cpu: 20m
+      memory: 48Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+nodeExporter:
+  enabled: true
+  image: prom/node-exporter:v1.8.2
+  port: 9100
+  resources:
+    requests:
+      cpu: 10m
+      memory: 24Mi
+    limits:
+      cpu: 100m
+      memory: 64Mi
+
+grafana:
+  enabled: true
+  # Версия 11.x обязательна: дашборды имеют schemaVersion 42, а Grafana
+  # умеет поднимать схему вперёд и не умеет опускать назад — на 10.x
+  # панели просто не отрисуются.
+  image: grafana/grafana:11.6.1
+  service:
+    port: 3000
+  # Учебный стенд: пароль по умолчанию оставлен и виден. Это не образец —
+  # на любой настоящей установке значение приходит из секрета.
+  adminUser: admin
+  adminPassword: admin
+  # Grafana открывается через тот же Ingress, что и приложение, по пути
+  # /grafana. Отсюда root_url и serve_from_sub_path в конфигурации.
+  ingressPath: /grafana
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 300m
+      memory: 256Mi

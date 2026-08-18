@@ -1,0 +1,75 @@
+{{- if .Values.nodeExporter.enabled }}
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: node-exporter
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "monitoring.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "monitoring.selector" (dict "component" "node-exporter" "root" $) | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "monitoring.labels" . | nindent 8 }}
+        app.kubernetes.io/component: node-exporter
+        # Отдельная метка app: по ней Prometheus отбирает эту цель в свою
+        # job. Через аннотацию prometheus.io/scrape этого делать не стоит —
+        # тогда node-exporter попал бы в job spring-services вперемешку
+        # с приложением, и правила про узлы смешались бы с правилами
+        # про сервисы.
+        app: node-exporter
+    spec:
+      # Сеть и PID узла, а не пода: без них node-exporter показывал бы
+      # статистику сетевого namespace пода и не видел бы процессы узла,
+      # то есть измерял бы сам себя вместо машины.
+      hostNetwork: true
+      hostPID: true
+      # hostNetwork без этой политики оставил бы поду DNS кластера через
+      # интерфейс узла, где резолвер кластера недоступен.
+      dnsPolicy: ClusterFirstWithHostNet
+      # Узлов всего два, и на управляющем есть taint у большинства
+      # дистрибутивов. DaemonSet, который не встал на control-plane,
+      # оставил бы половину кластера без метрик.
+      tolerations:
+        - operator: Exists
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+      containers:
+        - name: node-exporter
+          image: {{ .Values.nodeExporter.image }}
+          args:
+            - --path.procfs=/host/proc
+            - --path.sysfs=/host/sys
+            - --path.rootfs=/host/root
+            - --web.listen-address=:{{ .Values.nodeExporter.port }}
+            # Файловые системы контейнеров исключены: без фильтра каждый
+            # overlay-слой попадает отдельной метрикой, и число рядов
+            # растёт пропорционально числу контейнеров на узле.
+            - --collector.filesystem.mount-points-exclude=^/(dev|proc|sys|var/lib/docker/.+|var/lib/kubelet/.+|run/k3s/.+)($|/)
+            - --collector.filesystem.fs-types-exclude=^(autofs|binfmt_misc|cgroup.?|configfs|debugfs|devpts|devtmpfs|fusectl|hugetlbfs|mqueue|overlay|proc|procfs|pstore|rpc_pipefs|securityfs|selinuxfs|squashfs|sysfs|tracefs)$
+          ports:
+            - name: metrics
+              containerPort: {{ .Values.nodeExporter.port }}
+              hostPort: {{ .Values.nodeExporter.port }}
+          readinessProbe:
+            httpGet: { path: /metrics, port: {{ .Values.nodeExporter.port }} }
+            periodSeconds: 10
+            failureThreshold: 6
+          resources:
+            {{- toYaml .Values.nodeExporter.resources | nindent 12 }}
+          volumeMounts:
+            - { name: proc,   mountPath: /host/proc, readOnly: true }
+            - { name: sys,    mountPath: /host/sys,  readOnly: true }
+            - { name: rootfs, mountPath: /host/root, readOnly: true, mountPropagation: HostToContainer }
+      volumes:
+        - name: proc
+          hostPath: { path: /proc }
+        - name: sys
+          hostPath: { path: /sys }
+        - name: rootfs
+          hostPath: { path: / }
+{{- end }}
