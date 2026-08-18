@@ -98,15 +98,21 @@
     {
       "id": 6,
       "type": "timeseries",
-      "title": "Задержка ответа, 95-й процентиль",
-      "description": "histogram_quantile по http_server_requests_seconds_bucket. Медиана скрыла бы именно те запросы, из-за которых жалуются.",
+      "title": "Задержка ответа: средняя и максимальная",
+      "description": "Процентиля здесь нет, и это ограничение источника, а не выбор. Micrometer по умолчанию публикует http_server_requests_seconds как summary — только _count, _sum и _max, без гистограммных корзин _bucket. Без корзин histogram_quantile считать не из чего, и панель с ним оставалась бы пустой при полностью исправном приложении. Корзины включаются свойством management.metrics.distribution.percentiles-histogram.http.server.requests, но это заметно увеличивает число рядов, а на стенде из шести тестовых запросов процентиль всё равно статистически пуст. Средняя считается честно: сумма времени, делённая на число запросов; максимум показывает худший случай в окне — вместе они закрывают то, ради чего смотрят на процентиль.",
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
           "refId": "A",
-          "expr": "histogram_quantile(0.95, sum by (service, le) (rate(http_server_requests_seconds_bucket{service=~\"$service\"}[5m])))",
-          "legendFormat": "{{service}}",
+          "expr": "sum by (service) (rate(http_server_requests_seconds_sum{service=~\"$service\"}[5m])) / sum by (service) (rate(http_server_requests_seconds_count{service=~\"$service\"}[5m]))",
+          "legendFormat": "{{service}} — средняя",
+          "datasource": { "type": "prometheus", "uid": "prometheus" }
+        },
+        {
+          "refId": "B",
+          "expr": "max by (service) (http_server_requests_seconds_max{service=~\"$service\"})",
+          "legendFormat": "{{service}} — максимум",
           "datasource": { "type": "prometheus", "uid": "prometheus" }
         }
       ],

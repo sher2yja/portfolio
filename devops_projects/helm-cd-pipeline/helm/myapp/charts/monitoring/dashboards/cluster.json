@@ -106,7 +106,7 @@
         {
           "editorMode": "code",
           "expr": "gateway_requests_total",
-          "legendFormat": "__auto",
+          "legendFormat": "{{service}}",
           "range": true,
           "refId": "A"
         }
@@ -149,13 +149,14 @@
           },
           "direction": "backward",
           "editorMode": "builder",
-          "expr": "{namespace=\"__NAMESPACE__\", container!=\"\"} | line_format `{{.service}} -> {{__line__}}`",
+          "expr": "{namespace=\"__NAMESPACE__\", service=~\".+\"} | line_format `{{.service}} -> {{__line__}}`",
           "queryType": "range",
           "refId": "A"
         }
       ],
-      "title": "logs",
-      "type": "logs"
+      "title": "Логи приложения",
+      "type": "logs",
+      "description": "Только поды приложения: метка service проставляется promtail'ом из метки пода svc, которой у компонентов мониторинга нет."
     },
     {
       "datasource": {
