@@ -1,6 +1,6 @@
 # DevOps и инфраструктура
 
-Двенадцать проектов траектории DevOps: от установки серверной Ubuntu в консоли до Helm-релиза в кластере Kubernetes. Каждый — отдельная папка с README, подробным отчётом и работающими конфигурациями.
+Тринадцать проектов траектории DevOps: от установки серверной Ubuntu в консоли до Helm-релиза в кластере Kubernetes. Каждый — отдельная папка с README, подробным отчётом и работающими конфигурациями.
 
 Порядок в таблицах — от сложного к базовому, а не хронологический.
 
@@ -20,6 +20,7 @@
 | Проект | О чём | Технологии |
 |---|---|---|
 | [Ansible и Consul](./ansible-consul-iac) | Узлы настраиваются с управляющей машины ролями. Во второй части сервисы находят друг друга через service mesh, и адрес базы исчезает из конфигурации приложения | ![Ansible](https://img.shields.io/badge/Ansible-EE0000?style=flat-square&logo=ansible&logoColor=white) ![Consul](https://img.shields.io/badge/Consul-F24C53?style=flat-square&logo=consul&logoColor=white) ![Envoy](https://img.shields.io/badge/Envoy-AC6199?style=flat-square&logo=envoyproxy&logoColor=white) |
+| [Непрерывная доставка чартом Helm](./helm-cd-pipeline) | Приложение доставляется чартом через GitHub Actions. Конвейер поднимает одноразовый кластер k3d прямо в раннере, ставит туда собранный артефакт и гоняет тесты по живому; релиз публикуется в реестр и проверяется уже оттуда | ![GitHub Actions](https://img.shields.io/badge/GitHub%20Actions-2088FF?style=flat-square&logo=github-actions&logoColor=white) ![Helm](https://img.shields.io/badge/Helm-0F1689?style=flat-square&logo=helm&logoColor=white) ![k3d](https://img.shields.io/badge/k3d-FFC61C?style=flat-square&logo=k3s&logoColor=black) ![Prometheus](https://img.shields.io/badge/Prometheus-E6522C?style=flat-square&logo=prometheus&logoColor=white) |
 | [Конвейер GitLab CI/CD](./gitlab-cicd-pipeline) | Четыре стадии — стиль, сборка, тесты, доставка — с уведомлением в Telegram после каждой и выкладкой на сервер по кнопке | ![GitLab CI](https://img.shields.io/badge/GitLab%20CI-FC6D26?style=flat-square&logo=gitlab&logoColor=white) ![Bash](https://img.shields.io/badge/Bash-4EAA25?style=flat-square&logo=gnu-bash&logoColor=white) ![SSH](https://img.shields.io/badge/SSH-000000?style=flat-square) |
 
 ## Мониторинг
@@ -40,15 +41,20 @@
 
 ---
 
-## Сквозная линия: одно приложение, шесть способов доставки
+## Сквозная линия: одно приложение, семь способов доставки
 
-Шесть проектов разворачивают **одно и то же приложение** — систему бронирования отелей из 7 микросервисов на Spring Boot с PostgreSQL и RabbitMQ. Меняется только способ доставки:
+Семь проектов разворачивают **одно и то же приложение** — систему бронирования отелей из 7 микросервисов на Spring Boot с PostgreSQL и RabbitMQ. Меняется только способ доставки:
 
 ```
-   Compose ──► Swarm ──► Ansible ──► манифесты K8s ──► k3s ──► Helm
-   одна ВМ    кластер    роли и       Namespace…       свой     чарт и
-              из 3       Consul       Deployment       кластер  Kustomize
+   Compose ─► Swarm ─► Ansible ─► манифесты ─► k3s ─► Helm ─► конвейер
+   одна ВМ   кластер   роли и      K8s        свой   чарт и   доставка
+             из 3      Consul     Namespace…  кластер Kustomize чартом
 ```
+
+Последнее звено отличается от остальных по существу: там меняется не способ
+описания приложения, а способ его доставки — чарт упаковывается, публикуется
+в реестр и ставится оттуда конвейером, который сам поднимает кластер под
+проверку.
 
 Это даёт возможность сравнивать инструменты не по документации, а на одной и той же задаче: видно, что каждый следующий убирает, что добавляет и какой ценой. Наблюдения собраны в отчётах — например, чем `mode: global` отличается от `replicated` при том же наборе сервисов, и почему база в Kubernetes требует стратегии `Recreate`, а не `RollingUpdate`.
 

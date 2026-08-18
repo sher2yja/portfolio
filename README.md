@@ -4,7 +4,7 @@
 
 **Витрина с обложками и кратким описанием каждого проекта — [sher2yja.github.io](https://sher2yja.github.io).** Здесь, в репозитории, лежат сами конфигурации и подробные отчёты.
 
-Через шесть проектов проходит **одно и то же приложение** — система бронирования отелей из 7 микросервисов на Spring Boot с PostgreSQL и RabbitMQ. Каждый раз оно разворачивается принципиально иначе: сначала Docker Compose, затем Swarm, потом Ansible, дальше сырые манифесты Kubernetes, собственный кластер k3s и, наконец, Helm-чарт. Это даёт возможность сравнивать инструменты не по документации, а на одной и той же задаче.
+Через семь проектов проходит **одно и то же приложение** — система бронирования отелей из 7 микросервисов на Spring Boot с PostgreSQL и RabbitMQ. Каждый раз оно разворачивается принципиально иначе: сначала Docker Compose, затем Swarm, потом Ansible, дальше сырые манифесты Kubernetes, собственный кластер k3s, Helm-чарт и, наконец, непрерывная доставка этого чарта конвейером. Это даёт возможность сравнивать инструменты не по документации, а на одной и той же задаче.
 
 ---
 
@@ -13,7 +13,7 @@
 | | |
 |---|---|
 | **Оркестрация и контейнеры** | ![Kubernetes](https://img.shields.io/badge/Kubernetes-326CE5?style=flat-square&logo=kubernetes&logoColor=white) ![Helm](https://img.shields.io/badge/Helm-0F1689?style=flat-square&logo=helm&logoColor=white) ![Kustomize](https://img.shields.io/badge/Kustomize-326CE5?style=flat-square&logo=kubernetes&logoColor=white) ![k3s](https://img.shields.io/badge/k3s-FFC61C?style=flat-square&logo=k3s&logoColor=black) ![Docker](https://img.shields.io/badge/Docker-2496ED?style=flat-square&logo=docker&logoColor=white) ![Vagrant](https://img.shields.io/badge/Vagrant-1868F2?style=flat-square&logo=vagrant&logoColor=white) |
-| **Автоматизация и доставка** | ![Ansible](https://img.shields.io/badge/Ansible-EE0000?style=flat-square&logo=ansible&logoColor=white) ![Consul](https://img.shields.io/badge/Consul-F24C53?style=flat-square&logo=consul&logoColor=white) ![Envoy](https://img.shields.io/badge/Envoy-AC6199?style=flat-square&logo=envoyproxy&logoColor=white) ![GitLab CI](https://img.shields.io/badge/GitLab%20CI-FC6D26?style=flat-square&logo=gitlab&logoColor=white) |
+| **Автоматизация и доставка** | ![Ansible](https://img.shields.io/badge/Ansible-EE0000?style=flat-square&logo=ansible&logoColor=white) ![Consul](https://img.shields.io/badge/Consul-F24C53?style=flat-square&logo=consul&logoColor=white) ![Envoy](https://img.shields.io/badge/Envoy-AC6199?style=flat-square&logo=envoyproxy&logoColor=white) ![GitLab CI](https://img.shields.io/badge/GitLab%20CI-FC6D26?style=flat-square&logo=gitlab&logoColor=white) ![GitHub Actions](https://img.shields.io/badge/GitHub%20Actions-2088FF?style=flat-square&logo=github-actions&logoColor=white) ![Helm](https://img.shields.io/badge/Helm-0F1689?style=flat-square&logo=helm&logoColor=white) |
 | **Мониторинг** | ![Prometheus](https://img.shields.io/badge/Prometheus-E6522C?style=flat-square&logo=prometheus&logoColor=white) ![Grafana](https://img.shields.io/badge/Grafana-F46800?style=flat-square&logo=grafana&logoColor=white) ![Loki](https://img.shields.io/badge/Loki-F46800?style=flat-square&logo=grafana&logoColor=white) ![Alertmanager](https://img.shields.io/badge/Alertmanager-E6522C?style=flat-square&logo=prometheus&logoColor=white) |
 | **Системы и данные** | ![Linux](https://img.shields.io/badge/Linux-FCC624?style=flat-square&logo=linux&logoColor=black) ![Bash](https://img.shields.io/badge/Bash-4EAA25?style=flat-square&logo=gnu-bash&logoColor=white) ![NGINX](https://img.shields.io/badge/NGINX-009639?style=flat-square&logo=nginx&logoColor=white) ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?style=flat-square&logo=postgresql&logoColor=white) ![ANSI SQL](https://img.shields.io/badge/ANSI%20SQL-336791?style=flat-square) |
 
@@ -21,7 +21,7 @@
 
 ## Проекты
 
-Тринадцать проектов, порядок — от сложного к базовому. Подробности разделов: [DevOps и инфраструктура](./devops_projects) · [Работа с базами данных](./sql_projects).
+Четырнадцать проектов, порядок — от сложного к базовому. Подробности разделов: [DevOps и инфраструктура](./devops_projects) · [Работа с базами данных](./sql_projects).
 
 ### Kubernetes и оркестрация
 
@@ -37,6 +37,7 @@
 | Проект | О чём | Технологии |
 |---|---|---|
 | [Ansible и Consul](./devops_projects/ansible-consul-iac) | Конфигурирование узлов ролями; service mesh, после которого адрес базы исчезает из конфигурации приложения | ![Ansible](https://img.shields.io/badge/Ansible-EE0000?style=flat-square&logo=ansible&logoColor=white) ![Consul](https://img.shields.io/badge/Consul-F24C53?style=flat-square&logo=consul&logoColor=white) ![Envoy](https://img.shields.io/badge/Envoy-AC6199?style=flat-square&logo=envoyproxy&logoColor=white) |
+| [Непрерывная доставка чартом Helm](./devops_projects/helm-cd-pipeline) | Чарт Helm, конвейер GitHub Actions с одноразовым кластером k3d прямо в раннере, публикация артефакта в реестр и проверка именно выложенного | ![GitHub Actions](https://img.shields.io/badge/GitHub%20Actions-2088FF?style=flat-square&logo=github-actions&logoColor=white) ![Helm](https://img.shields.io/badge/Helm-0F1689?style=flat-square&logo=helm&logoColor=white) ![Kubernetes](https://img.shields.io/badge/Kubernetes-326CE5?style=flat-square&logo=kubernetes&logoColor=white) ![Prometheus](https://img.shields.io/badge/Prometheus-E6522C?style=flat-square&logo=prometheus&logoColor=white) |
 | [Конвейер GitLab CI/CD](./devops_projects/gitlab-cicd-pipeline) | Стиль, сборка, тесты, доставка — с уведомлением в Telegram после каждой стадии | ![GitLab CI](https://img.shields.io/badge/GitLab%20CI-FC6D26?style=flat-square&logo=gitlab&logoColor=white) ![Bash](https://img.shields.io/badge/Bash-4EAA25?style=flat-square&logo=gnu-bash&logoColor=white) ![SSH](https://img.shields.io/badge/SSH-000000?style=flat-square) |
 
 ### Мониторинг
