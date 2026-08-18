@@ -1,0 +1,26 @@
+# Вариант по умолчанию: Alertmanager работает, алерты в нём видны, но наружу
+# не уходят никуда.
+#
+# Так сделано намеренно. Мониторинг должен ставиться и работать без каких-либо
+# внешних учётных данных — иначе первый же человек, развернувший чарт у себя,
+# получит либо падение установки, либо уведомления в чужой чат.
+#
+# Включается доставка отдельно:
+#   --set monitoring.alertmanager.telegram.enabled=true \
+#   --set monitoring.alertmanager.telegram.botToken=... \
+#   --set monitoring.alertmanager.telegram.chatId=...
+global:
+  resolve_timeout: 2m
+
+route:
+  group_by: ['alertname']
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 3h
+  receiver: 'blackhole'
+
+receivers:
+  # Приёмник без единой настройки — это валидная конфигурация Alertmanager,
+  # означающая "принять и ничего не делать". Алерт при этом остаётся виден
+  # в веб-интерфейсе и в API, теряется только доставка.
+  - name: 'blackhole'

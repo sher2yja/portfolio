@@ -1,0 +1,68 @@
+# Promtail, DaemonSet на каждом узле.
+#
+# Это переписанная, а не перенесённая конфигурация. В исходном проекте на
+# Compose сбор строился на docker_sd_configs с сокетом /var/run/docker.sock
+# и каталогом /var/lib/docker/containers. В k3s и k3d рантайм — containerd,
+# и ни сокета, ни этого каталога на узле не существует; проверяется одной
+# командой:
+#
+#   docker exec k3d-<кластер>-server-0 ls /var/lib/docker
+#
+# Логи лежат в /var/log/pods/<ns>_<pod>_<uid>/<контейнер>/0.log, а
+# /var/log/containers — лишь симлинки на них. Поэтому монтируется один
+# хостовый каталог /var/log, а путь собирается relabel'ом из uid пода.
+server:
+  http_listen_port: 9080
+  log_level: warn
+
+positions:
+  filename: /run/promtail/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  - job_name: kubernetes-pods
+    kubernetes_sd_configs:
+      - role: pod
+    pipeline_stages:
+      # Обязательная и неочевидная стадия. containerd пишет строки в формате
+      # CRI: "2026-08-18T07:12:01.5Z stdout F текст". Без разбора в Loki уехала
+      # бы вся строка целиком вместе со штампом и признаком потока, а временем
+      # события считалось бы время чтения. У docker формат был JSON, поэтому
+      # в исходной конфигурации этой стадии не было вовсе.
+      - cri: {}
+    relabel_configs:
+      # DaemonSet, поэтому каждый экземпляр обязан читать только свой узел.
+      # Без этого фильтра каждый promtail собирал бы весь кластер, и Loki
+      # получал бы столько копий каждой строки, сколько в кластере узлов.
+      #
+      # HOSTNAME приходит не из имени пода, а из fieldRef spec.nodeName —
+      # см. env в манифесте DaemonSet.
+      - source_labels: [__meta_kubernetes_pod_node_name]
+        action: keep
+        regex: ${HOSTNAME}
+
+      - source_labels: [__meta_kubernetes_namespace]
+        action: keep
+        regex: __NAMESPACE__
+
+      - source_labels: [__meta_kubernetes_namespace]
+        target_label: namespace
+      - source_labels: [__meta_kubernetes_pod_name]
+        target_label: pod
+      - source_labels: [__meta_kubernetes_pod_container_name]
+        target_label: container
+
+      # Та же метка, что и у метрик. Благодаря ей в Grafana можно перейти
+      # с графика сервиса в его логи без ручного сопоставления имён.
+      - source_labels: [__meta_kubernetes_pod_label_svc]
+        target_label: service
+
+      # Сборка пути к файлу. separator склеивает uid и имя контейнера,
+      # звёздочки закрывают префикс <ns>_<pod>_ и имя файла, которое после
+      # перезапуска контейнера меняется с 0.log на 1.log.
+      - source_labels: [__meta_kubernetes_pod_uid, __meta_kubernetes_pod_container_name]
+        separator: /
+        target_label: __path__
+        replacement: /var/log/pods/*$1/*.log

@@ -1,0 +1,30 @@
+# Вариант с доставкой в Telegram.
+#
+# Ни токена, ни идентификатора чата в этом файле нет и быть не может:
+# вместо них стоят сентинелы, которые шаблон чарта заменяет значениями
+# из --set, а сам файл целиком уезжает в Secret, а не в ConfigMap.
+#
+# Выражение {{ template "telegram.message" . }} ниже — это шаблон
+# Alertmanager, а не Helm. Оно уцелело ровно потому, что файл не проходит
+# через tpl: Helm съел бы двойные скобки и упал на разборе.
+global:
+  resolve_timeout: 2m
+
+templates:
+  - '/etc/alertmanager/templates/*.tmpl'
+
+route:
+  group_by: ['alertname']
+  group_wait: 30s
+  group_interval: 5m
+  # Три часа, а не час: повтор чаще приучает не читать уведомления.
+  repeat_interval: 3h
+  receiver: 'telegram'
+
+receivers:
+  - name: 'telegram'
+    telegram_configs:
+      - bot_token: '__TELEGRAM_BOT_TOKEN__'
+        chat_id: __TELEGRAM_CHAT_ID__
+        parse_mode: HTML
+        message: '{{ template "telegram.message" . }}'

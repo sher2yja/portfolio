@@ -1,0 +1,89 @@
+{{- if .Values.promtail.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "monitoring.fullname" . }}-promtail
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "monitoring.labels" . | nindent 4 }}
+data:
+  promtail-config.yml: |
+{{ .Files.Get "files/promtail-config.yml" | replace "__NAMESPACE__" .Release.Namespace | indent 4 }}
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: promtail
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "monitoring.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "monitoring.selector" (dict "component" "promtail" "root" $) | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "monitoring.labels" . | nindent 8 }}
+        app.kubernetes.io/component: promtail
+      annotations:
+        checksum/config: {{ .Files.Get "files/promtail-config.yml" | sha256sum }}
+    spec:
+      serviceAccountName: {{ include "monitoring.fullname" . }}-promtail
+      # Логи в /var/log/pods принадлежат root, поэтому контейнер работает
+      # от root. Это единственный компонент стека без runAsNonRoot, и права
+      # компенсированы двумя ограничениями: том смонтирован только на чтение,
+      # а ServiceAccount умеет лишь читать поды.
+      containers:
+        - name: promtail
+          image: {{ .Values.promtail.image }}
+          args:
+            - -config.file=/etc/promtail/promtail-config.yml
+            # Без этого флага ${HOSTNAME} в конфигурации останется строкой
+            # как есть, relabel с action: keep не совпадёт ни с одним подом,
+            # и promtail будет молча работать, не собирая ничего.
+            - -config.expand-env=true
+          env:
+            # Именно spec.nodeName, а не имя пода: конфигурация сравнивает
+            # это значение с __meta_kubernetes_pod_node_name, чтобы каждый
+            # экземпляр DaemonSet читал только свой узел. Иначе каждый
+            # promtail собирал бы весь кластер, и в Loki уехало бы столько
+            # копий каждой строки, сколько в кластере узлов.
+            - name: HOSTNAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          ports:
+            - name: http
+              containerPort: 9080
+          readinessProbe:
+            httpGet: { path: /ready, port: 9080 }
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 10
+          resources:
+            {{- toYaml .Values.promtail.resources | nindent 12 }}
+          volumeMounts:
+            - { name: config,    mountPath: /etc/promtail }
+            - { name: positions, mountPath: /run/promtail }
+            - { name: varlog,    mountPath: /var/log, readOnly: true }
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "monitoring.fullname" . }}-promtail
+        - name: positions
+          emptyDir: {}
+        # Монтируется один каталог /var/log, а не /var/log/pods: в нём же
+        # лежит /var/log/containers с симлинками, которые указывают внутрь
+        # pods, и без общего корня они не разыменуются.
+        #
+        # Каталог /var/lib/docker/containers, который потребовался бы при
+        # рантайме docker, здесь НЕ монтируется: в k3s и k3d рантайм
+        # containerd, и такого каталога на узле нет. С type: Directory под
+        # не стартовал бы вовсе, а с пустым type тихо получил бы пустой
+        # каталог — ошибка, которая проявилась бы только нехваткой логов.
+        - name: varlog
+          hostPath:
+            path: /var/log
+            type: Directory
+{{- end }}

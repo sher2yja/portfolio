@@ -37,8 +37,35 @@ spec:
     metadata:
       labels:
         svc: {{ $svc.labelValue }}
-      {{- with $svc.podAnnotations }}
       annotations:
+        {{/*
+        Контрольная сумма значений секрета. Без неё helm upgrade с новым
+        паролем или новой парой ключей отрабатывает успешно и не делает
+        ничего: переменные из secretKeyRef подставляются в момент создания
+        пода, а раз шаблон пода не изменился, Deployment не перекатывается.
+        Приложение продолжает работать со старыми значениями до ближайшего
+        перезапуска — то есть ротация секрета молча не происходит.
+
+        Найдено на стенде: подмена пары ключей через helm upgrade прошла
+        успешно, а приложение осталось на прежних.
+
+        Сумма считается по значениям, а не по отрендеренному Secret, и это
+        важно: аннотации видны в kubectl describe pod любому, у кого есть
+        доступ к неймспейсу, поэтому сами значения сюда попадать не должны.
+        Хешируется каждое по отдельности, а не склейка, — иначе перестановка
+        двух значений оставила бы сумму прежней.
+        */}}
+        checksum/secret: {{ printf "%s|%s|%s|%s|%s"
+            ($.Values.secret.data.POSTGRES_PASSWORD | default "" | sha256sum)
+            ($.Values.secret.data.RABBIT_MQ_USER | default "" | sha256sum)
+            ($.Values.secret.data.RABBIT_MQ_PASSWORD | default "" | sha256sum)
+            ($.Values.secret.data.PRIVATE_KEY | default "" | trim | sha256sum)
+            ($.Values.secret.data.PUBLIC_KEY | default "" | trim | sha256sum)
+          | sha256sum }}
+        # То же самое для переменных окружения: смена APP_VERSION обязана
+        # доехать до подов, иначе /version продолжит отдавать старую.
+        checksum/env: {{ toYaml $.Values.env | sha256sum }}
+      {{- with $svc.podAnnotations }}
         {{- toYaml . | nindent 8 }}
       {{- end }}
     spec:

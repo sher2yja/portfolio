@@ -48,11 +48,15 @@ defaultResources. Вызывается как
 (так сделано у postgres: там проба содержательная, pg_isready, потому что
 порт 5432 слушается раньше, чем отработает initdb).
 
-Иначе строится стандартная тройка по TCP-порту. tcpSocket здесь не заглушка:
-у Spring Boot встроенный Tomcat открывает коннектор в самом конце старта,
-ровно перед строкой "Started ...Application in" — то есть открытый порт и
-означает готовность принимать запросы. HTTP-проба по /actuator/health на
-этом этапе вернула бы 404: actuator в образах появляется позже.
+Если задан probePaths — строится тройка HTTP-проб по actuator. Так сделано
+у четырёх инструментованных сервисов начиная с версии чарта 0.4.0.
+
+Иначе строится тройка по TCP-порту. tcpSocket здесь не заглушка: у Spring
+Boot встроенный Tomcat открывает коннектор в самом конце старта, ровно перед
+строкой "Started ...Application in" — то есть открытый порт и означает
+готовность принимать запросы. Для пяти оставшихся компонентов (hotel,
+payment, loyalty, rabbitmq, postgres) это по-прежнему верный способ: actuator
+у них не подключён, и HTTP-проба вернула бы 404.
 
 Бюджет старта регулируется на сервис полем startupFailureThreshold —
 оно нужно тем, у кого длинная цепочка wait-for-it.
@@ -62,6 +66,27 @@ defaultResources. Вызывается как
 {{- $d := .root.Values.defaultProbes -}}
 {{- if $svc.probes -}}
 {{ toYaml $svc.probes }}
+{{- else if $svc.probePaths -}}
+startupProbe:
+  httpGet:
+    path: {{ $svc.probePaths.startup }}
+    port: {{ $svc.probePort }}
+  periodSeconds: {{ $d.startup.periodSeconds }}
+  failureThreshold: {{ $svc.startupFailureThreshold | default $d.startup.failureThreshold }}
+readinessProbe:
+  httpGet:
+    path: {{ $svc.probePaths.readiness }}
+    port: {{ $svc.probePort }}
+  periodSeconds: {{ $d.readiness.periodSeconds }}
+  timeoutSeconds: {{ $d.readiness.timeoutSeconds }}
+  failureThreshold: {{ $d.readiness.failureThreshold }}
+livenessProbe:
+  httpGet:
+    path: {{ $svc.probePaths.liveness }}
+    port: {{ $svc.probePort }}
+  periodSeconds: {{ $d.liveness.periodSeconds }}
+  timeoutSeconds: {{ $d.liveness.timeoutSeconds }}
+  failureThreshold: {{ $d.liveness.failureThreshold }}
 {{- else -}}
 startupProbe:
   tcpSocket:

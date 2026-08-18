@@ -7,7 +7,7 @@
 # Реестр и тег образов вынесены наверх, чтобы выпуск менялся одной строкой:
 #   helm upgrade --install myapp . -n staging --set imageTag=1.1.0
 imageRegistry: sherryja
-imageTag: "1.0.0"
+imageTag: "1.1.0"
 imagePullPolicy: IfNotPresent
 
 # ---------------------------------------------------------------------------
@@ -199,6 +199,25 @@ services:
     ports:
       - containerPort: 8081
     probePort: 8081
+    # Метрики. Prometheus отбирает цели по этим аннотациям, а не по списку
+    # имён: восьмой инструментованный сервис попадёт в мониторинг, стоит их
+    # проставить, — без единой правки конфигурации Prometheus.
+    podAnnotations:
+      prometheus.io/scrape: "true"
+      prometheus.io/port: "8081"
+      prometheus.io/path: /actuator/prometheus
+    # Пробы переезжают с tcpSocket на actuator. Открытый порт отвечал
+    # на вопрос "слушает ли Tomcat", actuator отвечает на вопрос
+    # "готово ли приложение" — а это не одно и то же.
+    #
+    # Пути у проб разные, и это принципиально: общий /actuator/health
+    # собирает все индикаторы, включая базу и очередь. Тогда кратковременная
+    # недоступность PostgreSQL через liveness убила бы JVM всех четырёх
+    # сервисов вместо того, чтобы просто снять их с балансировки.
+    probePaths:
+      startup: /actuator/health/readiness
+      readiness: /actuator/health/readiness
+      liveness: /actuator/health/liveness
     envFrom:
       configMap: environments
       secret: svc-secrets
@@ -239,6 +258,25 @@ services:
     ports:
       - containerPort: 8083
     probePort: 8083
+    # Метрики. Prometheus отбирает цели по этим аннотациям, а не по списку
+    # имён: восьмой инструментованный сервис попадёт в мониторинг, стоит их
+    # проставить, — без единой правки конфигурации Prometheus.
+    podAnnotations:
+      prometheus.io/scrape: "true"
+      prometheus.io/port: "8083"
+      prometheus.io/path: /actuator/prometheus
+    # Пробы переезжают с tcpSocket на actuator. Открытый порт отвечал
+    # на вопрос "слушает ли Tomcat", actuator отвечает на вопрос
+    # "готово ли приложение" — а это не одно и то же.
+    #
+    # Пути у проб разные, и это принципиально: общий /actuator/health
+    # собирает все индикаторы, включая базу и очередь. Тогда кратковременная
+    # недоступность PostgreSQL через liveness убила бы JVM всех четырёх
+    # сервисов вместо того, чтобы просто снять их с балансировки.
+    probePaths:
+      startup: /actuator/health/readiness
+      readiness: /actuator/health/readiness
+      liveness: /actuator/health/liveness
     # Ждёт db, payment, hotel, loyalty и rabbitmq — пять хопов wait-for-it.
     startupFailureThreshold: 75
     envFrom:
@@ -301,6 +339,25 @@ services:
     ports:
       - containerPort: 8086
     probePort: 8086
+    # Метрики. Prometheus отбирает цели по этим аннотациям, а не по списку
+    # имён: восьмой инструментованный сервис попадёт в мониторинг, стоит их
+    # проставить, — без единой правки конфигурации Prometheus.
+    podAnnotations:
+      prometheus.io/scrape: "true"
+      prometheus.io/port: "8086"
+      prometheus.io/path: /actuator/prometheus
+    # Пробы переезжают с tcpSocket на actuator. Открытый порт отвечал
+    # на вопрос "слушает ли Tomcat", actuator отвечает на вопрос
+    # "готово ли приложение" — а это не одно и то же.
+    #
+    # Пути у проб разные, и это принципиально: общий /actuator/health
+    # собирает все индикаторы, включая базу и очередь. Тогда кратковременная
+    # недоступность PostgreSQL через liveness убила бы JVM всех четырёх
+    # сервисов вместо того, чтобы просто снять их с балансировки.
+    probePaths:
+      startup: /actuator/health/readiness
+      readiness: /actuator/health/readiness
+      liveness: /actuator/health/liveness
     envFrom:
       configMap: environments
       secret: svc-secrets
@@ -321,6 +378,25 @@ services:
     ports:
       - containerPort: 8087
     probePort: 8087
+    # Метрики. Prometheus отбирает цели по этим аннотациям, а не по списку
+    # имён: восьмой инструментованный сервис попадёт в мониторинг, стоит их
+    # проставить, — без единой правки конфигурации Prometheus.
+    podAnnotations:
+      prometheus.io/scrape: "true"
+      prometheus.io/port: "8087"
+      prometheus.io/path: /actuator/prometheus
+    # Пробы переезжают с tcpSocket на actuator. Открытый порт отвечал
+    # на вопрос "слушает ли Tomcat", actuator отвечает на вопрос
+    # "готово ли приложение" — а это не одно и то же.
+    #
+    # Пути у проб разные, и это принципиально: общий /actuator/health
+    # собирает все индикаторы, включая базу и очередь. Тогда кратковременная
+    # недоступность PostgreSQL через liveness убила бы JVM всех четырёх
+    # сервисов вместо того, чтобы просто снять их с балансировки.
+    probePaths:
+      startup: /actuator/health/readiness
+      readiness: /actuator/health/readiness
+      liveness: /actuator/health/liveness
     # Самый долгий старт в наборе: цепочка wait-for-it у gateway — семь хопов
     # по 40 секунд, и только потом стартует JVM. 90 × 5 с = 7,5 минуты запаса.
     startupFailureThreshold: 90
@@ -392,7 +468,7 @@ env:
   # Версия приложения. Отдаётся наружу эндпоинтом /api/v1/gateway/version —
   # по нему проверяется, что доставка действительно доехала, а не просто
   # джоба стала зелёной.
-  APP_VERSION: "1.0.0"
+  APP_VERSION: "1.1.0"
 
   # Идентификаторы, по которым сервисы узнают друг друга в межсервисных
   # вызовах. Это константы, одинаковые во всех репликах, а не секреты —
@@ -426,3 +502,15 @@ env:
   RABBIT_MQ_PORT: "5672"
   RABBIT_MQ_QUEUE_NAME: messagequeue
   RABBIT_MQ_EXCHANGE: messagequeue-exchange
+
+# ---------------------------------------------------------------------------
+# Мониторинг — подчарт charts/monitoring. Здесь только выключатель; все его
+# собственные значения лежат в charts/monitoring/values.yaml и
+# переопределяются с префиксом monitoring., например:
+#   --set monitoring.prometheus.retention=2h
+#
+# Выключен по умолчанию намеренно: чарт приложения должен ставиться и
+# работать сам по себе. Включается на площадках — values-ci.yaml
+# и values-local.yaml.
+monitoring:
+  enabled: false

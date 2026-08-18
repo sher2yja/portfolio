@@ -1,0 +1,178 @@
+{
+  "uid": "helm-cd-app",
+  "title": "Приложение: сервисы, задержки и память JVM",
+  "description": "Метрики Micrometer с четырёх инструментованных сервисов. Разрез везде по метке service — она стабильна между пересозданиями пода, в отличие от pod и instance.",
+  "tags": ["helm-cd", "application"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-1h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "service",
+        "label": "Сервис",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "query": "label_values(up{job=\"spring-services\"}, service)",
+        "refresh": 2,
+        "includeAll": true,
+        "multi": true,
+        "current": { "text": "All", "value": "$__all" }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Инструментованных сервисов на связи",
+      "description": "Сколько целей job spring-services отвечает. Если число меньше четырёх — сработает правило ServiceDown.",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "refId": "A", "expr": "sum(up{job=\"spring-services\"})", "datasource": { "type": "prometheus", "uid": "prometheus" } }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "red", "value": null },
+            { "color": "orange", "value": 1 },
+            { "color": "green", "value": 4 }
+          ] }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Запросов через gateway",
+      "description": "Счётчик gateway_requests_total. Растёт на глазах во время стадии функциональных тестов — это и есть доказательство, что инструментовка живая, а не просто эндпоинт открыт.",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "refId": "A", "expr": "sum(gateway_requests_total)", "datasource": { "type": "prometheus", "uid": "prometheus" } }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Бронирований",
+      "description": "bookings_counter_total. Начальное смещение не задаётся намеренно: метрика, которую подкрутили, перестаёт быть измерением.",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "refId": "A", "expr": "sum(bookings_counter_total)", "datasource": { "type": "prometheus", "uid": "prometheus" } }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Очередь: отправлено / обработано",
+      "description": "Пара rabbitmq_sent_total и rabbitmq_processed_total. Расхождение между ними означает, что очередь разбирается медленнее, чем наполняется — по одному счётчику этого не увидеть.",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "refId": "A", "expr": "sum(rabbitmq_sent_total)", "legendFormat": "отправлено", "datasource": { "type": "prometheus", "uid": "prometheus" } },
+        { "refId": "B", "expr": "sum(rabbitmq_processed_total)", "legendFormat": "обработано", "datasource": { "type": "prometheus", "uid": "prometheus" } }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "HTTP-запросов в секунду по сервисам",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (service) (rate(http_server_requests_seconds_count{service=~\"$service\"}[5m]))",
+          "legendFormat": "{{service}}",
+          "datasource": { "type": "prometheus", "uid": "prometheus" }
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] }
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Задержка ответа, 95-й процентиль",
+      "description": "histogram_quantile по http_server_requests_seconds_bucket. Медиана скрыла бы именно те запросы, из-за которых жалуются.",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum by (service, le) (rate(http_server_requests_seconds_bucket{service=~\"$service\"}[5m])))",
+          "legendFormat": "{{service}}",
+          "datasource": { "type": "prometheus", "uid": "prometheus" }
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] }
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Куча JVM, доля от предела",
+      "description": "Куча ограничена -Xmx192m из JAVA_TOOL_OPTIONS. Условие > 0 в знаменателе отбрасывает пулы без верхней границы, у которых jvm_memory_max_bytes равен -1 — без него отношение уезжает выше единицы на ровном месте.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (service) (jvm_memory_used_bytes{area=\"heap\", service=~\"$service\"}) / sum by (service) (jvm_memory_max_bytes{area=\"heap\", service=~\"$service\"} > 0)",
+          "legendFormat": "{{service}}",
+          "datasource": { "type": "prometheus", "uid": "prometheus" }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "max": 1,
+          "min": 0,
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "green", "value": null },
+            { "color": "orange", "value": 0.75 },
+            { "color": "red", "value": 0.9 }
+          ] }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Время с последнего старта процесса",
+      "description": "process_uptime_seconds. Обнуление ряда означает перезапуск процесса — на этом же построено правило PodCrashLooping, которое считает обнуления функцией resets().",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "process_uptime_seconds{job=\"spring-services\", service=~\"$service\"}",
+          "legendFormat": "{{service}}",
+          "datasource": { "type": "prometheus", "uid": "prometheus" }
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] }
+    },
+    {
+      "id": 9,
+      "type": "logs",
+      "title": "Логи сервисов",
+      "description": "Метка service здесь та же, что и у метрик, — благодаря этому с любого графика выше можно перейти в логи того же сервиса без сопоставления имён вручную.",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 20 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "{namespace=\"__NAMESPACE__\", service=~\"$service\"}",
+          "datasource": { "type": "loki", "uid": "loki" }
+        }
+      ],
+      "options": { "showTime": true, "wrapLogMessage": true, "sortOrder": "Descending" }
+    }
+  ]
+}

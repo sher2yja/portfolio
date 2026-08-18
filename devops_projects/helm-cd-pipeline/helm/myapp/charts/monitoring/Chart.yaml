@@ -1,0 +1,12 @@
+apiVersion: v2
+name: monitoring
+description: >-
+  Наблюдаемость для приложения: Prometheus собирает метрики приложения
+  и инфраструктуры, Loki с Promtail — логи, Grafana показывает и то и другое,
+  Alertmanager рассылает оповещения. Ставится как подчарт вместе с
+  приложением и включается одним ключом monitoring.enabled.
+type: application
+version: 0.1.0
+
+# Версии компонентов зафиксированы в values.yaml, а не здесь: appVersion
+# у сборного стека из шести программ смысла не имеет.

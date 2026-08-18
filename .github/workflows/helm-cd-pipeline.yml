@@ -95,6 +95,36 @@ jobs:
           shellcheck --severity=error --exclude=SC2260 \
             "$PROJECT_DIR"/docker/wait-for-it.sh
 
+      - name: в проекте нет секретов
+        run: |
+          # Дешёвая страховка от копипасты. Конфигурации мониторинга взяты
+          # из проекта, где в alertmanager.yml лежал живой токен бота, и
+          # перенос «как есть» — самый естественный способ его опубликовать.
+          #
+          # Формат токена Telegram: 8-10 цифр, двоеточие, 35 символов.
+          if grep -rEn '[0-9]{8,10}:AA[A-Za-z0-9_-]{33}' "$PROJECT_DIR"; then
+            echo "::error::в проекте найден токен Telegram-бота"
+            exit 1
+          fi
+          # bot_token и chat_id допустимы только пустыми или как сентинелы.
+          if grep -rEn "bot_token:\s*'?[^'_[:space:]]" "$PROJECT_DIR" \
+               | grep -v '__TELEGRAM_BOT_TOKEN__'; then
+            echo "::error::bot_token с непустым значением"
+            exit 1
+          fi
+          # Приватные ключи: PEM-заголовок или base64 PKCS#8.
+          #
+          # После префикса требуется ещё сотня символов base64, и это не
+          # придирка к регулярному выражению: в infra/secrets.env.example
+          # префикс MIIEvQIBADANBgkq упомянут в тексте — там объясняется,
+          # чем правильный ключ отличается от PKCS#1. Проверка на голый
+          # префикс роняла бы сборку на собственной документации.
+          if grep -rEn 'BEGIN (RSA )?PRIVATE KEY|MIIEvQIBADANBgkq[A-Za-z0-9+/]{100,}' "$PROJECT_DIR"; then
+            echo "::error::в проекте найден приватный ключ"
+            exit 1
+          fi
+          echo "ok: секретов не найдено"
+
       - name: helm lint
         run: helm lint "$CHART_DIR"
 
@@ -121,12 +151,27 @@ jobs:
 
       - name: рендер и проверка манифестов
         run: |
-          helm template t "$CHART_DIR" -n "$NAMESPACE" \
-            --set-string secret.data.POSTGRES_PASSWORD=dummy \
-            --set-string secret.data.RABBIT_MQ_PASSWORD=dummy \
-            --set-string secret.data.PRIVATE_KEY=dummy \
-            --set-string secret.data.PUBLIC_KEY=dummy > rendered.yaml
-          echo "объектов: $(grep -c '^kind:' rendered.yaml)"
+          # Рендерим оба состояния подчарта мониторинга и проверяем их вместе.
+          # Только с monitoring.enabled=true проверялись бы не все ветки:
+          # выключенное состояние — это то, в котором чарт ставят по умолчанию,
+          # и сломать его условием {{- if }} проще всего.
+          for mon in false true; do
+            helm template t "$CHART_DIR" -n "$NAMESPACE" \
+              --set monitoring.enabled=$mon \
+              --set-string secret.data.POSTGRES_PASSWORD=dummy \
+              --set-string secret.data.RABBIT_MQ_PASSWORD=dummy \
+              --set-string secret.data.PRIVATE_KEY=dummy \
+              --set-string secret.data.PUBLIC_KEY=dummy > "rendered-mon-$mon.yaml"
+            echo "monitoring.enabled=$mon -> объектов: $(grep -c '^kind:' "rendered-mon-$mon.yaml")"
+          done
+          cat rendered-mon-false.yaml rendered-mon-true.yaml > rendered.yaml
+
+          # Конфигурации компонентов — плоские файлы, поэтому их можно
+          # проверить теми же инструментами, что и в бою, до всякого Helm.
+          MONF="$CHART_DIR/charts/monitoring/files"
+          docker run --rm --entrypoint promtool -v "$PWD/$MONF":/c prom/prometheus:v2.53.0 \
+            check rules /c/alert.rules.yml /c/alert.rules.demo.yml
+          echo "ok: правила оповещений разобраны promtool"
 
           curl -sSL -o /tmp/kubeconform.tar.gz \
             https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz
@@ -345,6 +390,7 @@ jobs:
           mkdir -p reports
           newman run "$PROJECT_DIR/tests/application_tests.postman_collection.json" \
             -e "$PROJECT_DIR/tests/application_tests.postman_environment.json" \
+            --env-var "EXPECTED_VERSION=$IMAGE_TAG" \
             -r cli,junit,htmlextra \
             --reporter-junit-export reports/newman.xml \
             --reporter-htmlextra-export reports/newman.html
