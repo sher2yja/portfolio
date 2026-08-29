@@ -21,7 +21,7 @@
 
 ## Проекты
 
-Семнадцать проектов, порядок — от сложного к базовому. Подробности разделов: [DevOps и инфраструктура](./devops_projects) · [Работа с базами данных](./sql_projects).
+Восемнадцать проектов, порядок — от сложного к базовому. Подробности разделов: [DevOps и инфраструктура](./devops_projects) · [Работа с базами данных](./sql_projects).
 
 ### Главный проект
 
@@ -71,6 +71,7 @@
 | [Множества и соединения таблиц](./sql_projects/pizzeria-sql-sets) | Одиннадцать запросов к той же базе: `UNION`, `INTERSECT`, `EXCEPT` против `JOIN`. Два журнала событий не связаны ключом, и часть вопросов решается только пересечением множеств | ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?style=flat-square&logo=postgresql&logoColor=white) ![ANSI SQL](https://img.shields.io/badge/ANSI%20SQL-336791?style=flat-square) ![Bash](https://img.shields.io/badge/Bash-4EAA25?style=flat-square&logo=gnu-bash&logoColor=white) |
 | [Соединения таблиц вглубь](./sql_projects/pizzeria-sql-joins) | Одиннадцать запросов к той же базе: типы соединений, CTE и обработка `NULL`. Первые четыре обходятся без `NOT IN` и `NOT EXISTS` — разность множеств выражается анти-джойном | ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?style=flat-square&logo=postgresql&logoColor=white) ![ANSI SQL](https://img.shields.io/badge/ANSI%20SQL-336791?style=flat-square) ![Bash](https://img.shields.io/badge/Bash-4EAA25?style=flat-square&logo=gnu-bash&logoColor=white) |
 | [Изменение данных на SQL](./sql_projects/pizzeria-sql-dml) | Четырнадцать запросов: семь читают данные, семь их меняют. `INSERT`, `UPDATE`, `DELETE` накапливаются цепочкой, поэтому проверка требует пересоздания базы, а порядок удалений задаёт внешний ключ | ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?style=flat-square&logo=postgresql&logoColor=white) ![ANSI SQL](https://img.shields.io/badge/ANSI%20SQL-336791?style=flat-square) ![Bash](https://img.shields.io/badge/Bash-4EAA25?style=flat-square&logo=gnu-bash&logoColor=white) |
+| [Представления и снимки данных](./sql_projects/pizzeria-sql-views) | Девять запросов про `VIEW` и `MATERIALIZED VIEW`: одно хранит запрос, другое — результат. Разрыв между снимком и таблицами показан вставкой строки до `REFRESH` | ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?style=flat-square&logo=postgresql&logoColor=white) ![ANSI SQL](https://img.shields.io/badge/ANSI%20SQL-336791?style=flat-square) ![Bash](https://img.shields.io/badge/Bash-4EAA25?style=flat-square&logo=gnu-bash&logoColor=white) |
 
 ---
 
