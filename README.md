@@ -21,7 +21,7 @@
 
 ## Проекты
 
-Пятнадцать проектов, порядок — от сложного к базовому. Подробности разделов: [DevOps и инфраструктура](./devops_projects) · [Работа с базами данных](./sql_projects).
+Шестнадцать проектов, порядок — от сложного к базовому. Подробности разделов: [DevOps и инфраструктура](./devops_projects) · [Работа с базами данных](./sql_projects).
 
 ### Главный проект
 
@@ -69,6 +69,7 @@
 |---|---|---|
 | [Выборки по базе пиццерий](./sql_projects/pizzeria-sql-basics) | Десять запросов к пяти связанным таблицам. Часть запросов обходится без `JOIN` и `IN`: таблицы связываются подзапросами вручную | ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?style=flat-square&logo=postgresql&logoColor=white) ![ANSI SQL](https://img.shields.io/badge/ANSI%20SQL-336791?style=flat-square) ![Bash](https://img.shields.io/badge/Bash-4EAA25?style=flat-square&logo=gnu-bash&logoColor=white) |
 | [Множества и соединения таблиц](./sql_projects/pizzeria-sql-sets) | Одиннадцать запросов к той же базе: `UNION`, `INTERSECT`, `EXCEPT` против `JOIN`. Два журнала событий не связаны ключом, и часть вопросов решается только пересечением множеств | ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?style=flat-square&logo=postgresql&logoColor=white) ![ANSI SQL](https://img.shields.io/badge/ANSI%20SQL-336791?style=flat-square) ![Bash](https://img.shields.io/badge/Bash-4EAA25?style=flat-square&logo=gnu-bash&logoColor=white) |
+| [Соединения таблиц вглубь](./sql_projects/pizzeria-sql-joins) | Одиннадцать запросов к той же базе: типы соединений, CTE и обработка `NULL`. Первые четыре обходятся без `NOT IN` и `NOT EXISTS` — разность множеств выражается анти-джойном | ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?style=flat-square&logo=postgresql&logoColor=white) ![ANSI SQL](https://img.shields.io/badge/ANSI%20SQL-336791?style=flat-square) ![Bash](https://img.shields.io/badge/Bash-4EAA25?style=flat-square&logo=gnu-bash&logoColor=white) |
 
 ---
 
