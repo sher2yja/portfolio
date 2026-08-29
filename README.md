@@ -22,7 +22,7 @@
 
 ## Проекты
 
-Девятнадцать проектов, порядок — от сложного к базовому. Подробности разделов: [DevOps и инфраструктура](./devops_projects) · [Работа с базами данных](./sql_projects) · [Python](./python_projects).
+Двадцать проектов, порядок — от сложного к базовому. Подробности разделов: [DevOps и инфраструктура](./devops_projects) · [Работа с базами данных](./sql_projects) · [Python](./python_projects).
 
 ### Главный проект
 
@@ -79,6 +79,7 @@
 | Проект | О чём | Технологии |
 |---|---|---|
 | [Параллельность: процессы и корутины](./python_projects/python-concurrency) | Две программы: экзамен, где каждый экзаменатор работает в своём процессе поверх общего состояния под `Manager` и замком, и асинхронный загрузчик, принимающий следующую ссылку до окончания предыдущей загрузки | ![Python](https://img.shields.io/badge/Python-3776AB?style=flat-square&logo=python&logoColor=white) ![multiprocessing](https://img.shields.io/badge/multiprocessing-3776AB?style=flat-square&logo=python&logoColor=white) ![asyncio](https://img.shields.io/badge/asyncio-3776AB?style=flat-square&logo=python&logoColor=white) ![aiohttp](https://img.shields.io/badge/aiohttp-2C5BB4?style=flat-square&logo=aiohttp&logoColor=white) |
+| [Десять задач на Python](./python_projects/python-algorithms) | Динамика, заливка связной области, слияние отсортированных списков, разбор строки в число без `float()`. Только стандартная библиотека; форму решений задают ограничения условия | ![Python](https://img.shields.io/badge/Python-3776AB?style=flat-square&logo=python&logoColor=white) ![stdlib](https://img.shields.io/badge/stdlib%20only-3776AB?style=flat-square&logo=python&logoColor=white) ![JSON](https://img.shields.io/badge/JSON-000000?style=flat-square&logo=json&logoColor=white) |
 
 ---
 
