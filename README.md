@@ -1,6 +1,6 @@
-# Портфолио: DevOps и базы данных
+# Портфолио: DevOps, базы данных и Python
 
-Собственные инженерные проекты по направлению DevOps: от настройки голого Linux-сервера до Helm-релиза в кластере Kubernetes. Плюс раздел с SQL.
+Собственные инженерные проекты по направлению DevOps: от настройки голого Linux-сервера до Helm-релиза в кластере Kubernetes. Плюс разделы с SQL и Python.
 
 **Витрина с обложками и кратким описанием каждого проекта — [sher2yja.github.io](https://sher2yja.github.io).** Здесь, в репозитории, лежат сами конфигурации и подробные отчёты.
 
@@ -16,12 +16,13 @@
 | **Автоматизация и доставка** | ![Ansible](https://img.shields.io/badge/Ansible-EE0000?style=flat-square&logo=ansible&logoColor=white) ![Consul](https://img.shields.io/badge/Consul-F24C53?style=flat-square&logo=consul&logoColor=white) ![Envoy](https://img.shields.io/badge/Envoy-AC6199?style=flat-square&logo=envoyproxy&logoColor=white) ![GitLab CI](https://img.shields.io/badge/GitLab%20CI-FC6D26?style=flat-square&logo=gitlab&logoColor=white) ![GitHub Actions](https://img.shields.io/badge/GitHub%20Actions-2088FF?style=flat-square&logo=github-actions&logoColor=white) ![Helm](https://img.shields.io/badge/Helm-0F1689?style=flat-square&logo=helm&logoColor=white) |
 | **Мониторинг** | ![Prometheus](https://img.shields.io/badge/Prometheus-E6522C?style=flat-square&logo=prometheus&logoColor=white) ![Grafana](https://img.shields.io/badge/Grafana-F46800?style=flat-square&logo=grafana&logoColor=white) ![Loki](https://img.shields.io/badge/Loki-F46800?style=flat-square&logo=grafana&logoColor=white) ![Alertmanager](https://img.shields.io/badge/Alertmanager-E6522C?style=flat-square&logo=prometheus&logoColor=white) |
 | **Системы и данные** | ![Linux](https://img.shields.io/badge/Linux-FCC624?style=flat-square&logo=linux&logoColor=black) ![Bash](https://img.shields.io/badge/Bash-4EAA25?style=flat-square&logo=gnu-bash&logoColor=white) ![NGINX](https://img.shields.io/badge/NGINX-009639?style=flat-square&logo=nginx&logoColor=white) ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?style=flat-square&logo=postgresql&logoColor=white) ![ANSI SQL](https://img.shields.io/badge/ANSI%20SQL-336791?style=flat-square) |
+| **Языки и параллелизм** | ![Python](https://img.shields.io/badge/Python-3776AB?style=flat-square&logo=python&logoColor=white) ![multiprocessing](https://img.shields.io/badge/multiprocessing-3776AB?style=flat-square&logo=python&logoColor=white) ![asyncio](https://img.shields.io/badge/asyncio-3776AB?style=flat-square&logo=python&logoColor=white) ![aiohttp](https://img.shields.io/badge/aiohttp-2C5BB4?style=flat-square&logo=aiohttp&logoColor=white) |
 
 ---
 
 ## Проекты
 
-Восемнадцать проектов, порядок — от сложного к базовому. Подробности разделов: [DevOps и инфраструктура](./devops_projects) · [Работа с базами данных](./sql_projects).
+Девятнадцать проектов, порядок — от сложного к базовому. Подробности разделов: [DevOps и инфраструктура](./devops_projects) · [Работа с базами данных](./sql_projects) · [Python](./python_projects).
 
 ### Главный проект
 
@@ -73,6 +74,12 @@
 | [Изменение данных на SQL](./sql_projects/pizzeria-sql-dml) | Четырнадцать запросов: семь читают данные, семь их меняют. `INSERT`, `UPDATE`, `DELETE` накапливаются цепочкой, поэтому проверка требует пересоздания базы, а порядок удалений задаёт внешний ключ | ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?style=flat-square&logo=postgresql&logoColor=white) ![ANSI SQL](https://img.shields.io/badge/ANSI%20SQL-336791?style=flat-square) ![Bash](https://img.shields.io/badge/Bash-4EAA25?style=flat-square&logo=gnu-bash&logoColor=white) |
 | [Представления и снимки данных](./sql_projects/pizzeria-sql-views) | Девять запросов про `VIEW` и `MATERIALIZED VIEW`: одно хранит запрос, другое — результат. Разрыв между снимком и таблицами показан вставкой строки до `REFRESH` | ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?style=flat-square&logo=postgresql&logoColor=white) ![ANSI SQL](https://img.shields.io/badge/ANSI%20SQL-336791?style=flat-square) ![Bash](https://img.shields.io/badge/Bash-4EAA25?style=flat-square&logo=gnu-bash&logoColor=white) |
 
+### Python
+
+| Проект | О чём | Технологии |
+|---|---|---|
+| [Параллельность: процессы и корутины](./python_projects/python-concurrency) | Две программы: экзамен, где каждый экзаменатор работает в своём процессе поверх общего состояния под `Manager` и замком, и асинхронный загрузчик, принимающий следующую ссылку до окончания предыдущей загрузки | ![Python](https://img.shields.io/badge/Python-3776AB?style=flat-square&logo=python&logoColor=white) ![multiprocessing](https://img.shields.io/badge/multiprocessing-3776AB?style=flat-square&logo=python&logoColor=white) ![asyncio](https://img.shields.io/badge/asyncio-3776AB?style=flat-square&logo=python&logoColor=white) ![aiohttp](https://img.shields.io/badge/aiohttp-2C5BB4?style=flat-square&logo=aiohttp&logoColor=white) |
+
 ---
 
 ## Как устроен каждый проект
@@ -80,12 +87,12 @@
 ```
 <проект>/
 ├── README.md         обзор, стек, схема архитектуры, ключевые решения
-├── main_report.md    подробный разбор с командами и скриншотами
-├── images/           скриншоты работы
-└── <код>             манифесты, скрипты, конфигурации, чарты
+├── main_report.md    подробный разбор с командами, выводом и скриншотами
+├── images/           скриншоты работы, если стенд их даёт
+└── <код>             манифесты, скрипты, конфигурации, чарты, модули
 ```
 
-В репозитории лежат **собственные наработки**: скрипты, Dockerfile, docker-compose, роли Ansible, манифесты Kubernetes, Helm-чарты, конфигурации мониторинга, SQL-запросы. Сторонние материалы и исходный код разворачиваемого приложения в репозиторий не входят.
+В репозитории лежат **собственные наработки**: скрипты, Dockerfile, docker-compose, роли Ansible, манифесты Kubernetes, Helm-чарты, конфигурации мониторинга, SQL-запросы, модули на Python. Сторонние материалы и исходный код разворачиваемого приложения в репозиторий не входят.
 
 Пароли и ключи в манифестах — заглушки для локальных стендов на виртуальных машинах, а не рабочие секреты.
 

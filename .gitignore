@@ -24,6 +24,11 @@ devops_projects/log-analytics-monitoring/02/log.txt
 devops_projects/log-analytics-monitoring/04/*.log
 devops_projects/log-analytics-monitoring/06/report.html
 
+# Python: локальное окружение поднимает run.sh, байт-код появляется при запуске
+.venv/
+__pycache__/
+*.pyc
+
 # Системное
 .DS_Store
 *.swp
