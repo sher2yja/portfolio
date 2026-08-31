@@ -22,15 +22,16 @@
 
 ## Проекты
 
-Двадцать проектов, порядок — от сложного к базовому. Подробности разделов: [DevOps и инфраструктура](./devops_projects) · [Работа с базами данных](./sql_projects) · [Python](./python_projects). Первым идёт собственный продукт — он в этот счёт не входит и живёт отдельным репозиторием.
+Двадцать проектов, порядок — от сложного к базовому. Подробности разделов: [DevOps и инфраструктура](./devops_projects) · [Работа с базами данных](./sql_projects) · [Python](./python_projects). Первыми идут два собственных продукта — они в этот счёт не входят и живут отдельными репозиториями.
 
-### Собственный продукт
+### Собственные продукты
 
-Единственная работа с пользователями, версией и релизами: не отчёт о стенде, а программа, которую скачивают и запускают. Живёт отдельным репозиторием, потому что её собирает конвейер, а не автор.
+Два варианта одного медиастека для разных машин: k3s на Linux и Docker Compose в WSL2 на Windows. Это программы с версиями и релизами, которые скачивают и запускают; каждая живёт отдельным репозиторием.
 
 | Проект | О чём | Технологии |
 |---|---|---|
 | [Домашний медиасервер на k3s](https://github.com/sher2yja/home-media-k3s) | Шесть сервисов медиатеки в кластере k3s и установщик, который ставит их на чужую машину одним файлом — без командной строки и без единой зависимости. Конвейер поднимает настоящий k3s и проверяет установку тем же кодом, что и у пользователя. [Релизы](https://github.com/sher2yja/home-media-k3s/releases) | ![k3s](https://img.shields.io/badge/k3s-FFC61C?style=flat-square&logo=k3s&logoColor=black) ![Kubernetes](https://img.shields.io/badge/Kubernetes-326CE5?style=flat-square&logo=kubernetes&logoColor=white) ![Python](https://img.shields.io/badge/Python-3776AB?style=flat-square&logo=python&logoColor=white) ![Ansible](https://img.shields.io/badge/Ansible-EE0000?style=flat-square&logo=ansible&logoColor=white) ![GitHub Actions](https://img.shields.io/badge/GitHub%20Actions-2088FF?style=flat-square&logo=github-actions&logoColor=white) |
+| [Home Media Lite для Windows](https://github.com/sher2yja/home-media-lite) | Тот же медиастек в Docker Compose для домашнего Windows-компьютера. Один `.exe` готовит WSL2 и Docker Desktop, поднимает семь контейнеров, связывает сервисы через API и выключает весь стек одной кнопкой. [Релизы](https://github.com/sher2yja/home-media-lite/releases) | ![Docker Compose](https://img.shields.io/badge/Docker%20Compose-2496ED?style=flat-square&logo=docker&logoColor=white) ![WSL2](https://img.shields.io/badge/WSL2-0078D4?style=flat-square&logo=windows&logoColor=white) ![Python](https://img.shields.io/badge/Python-3776AB?style=flat-square&logo=python&logoColor=white) ![GitHub Actions](https://img.shields.io/badge/GitHub%20Actions-2088FF?style=flat-square&logo=github-actions&logoColor=white) |
 
 ### Главный проект
 
