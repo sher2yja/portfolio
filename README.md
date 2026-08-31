@@ -22,7 +22,15 @@
 
 ## Проекты
 
-Двадцать проектов, порядок — от сложного к базовому. Подробности разделов: [DevOps и инфраструктура](./devops_projects) · [Работа с базами данных](./sql_projects) · [Python](./python_projects).
+Двадцать проектов, порядок — от сложного к базовому. Подробности разделов: [DevOps и инфраструктура](./devops_projects) · [Работа с базами данных](./sql_projects) · [Python](./python_projects). Первым идёт собственный продукт — он в этот счёт не входит и живёт отдельным репозиторием.
+
+### Собственный продукт
+
+Единственная работа с пользователями, версией и релизами: не отчёт о стенде, а программа, которую скачивают и запускают. Живёт отдельным репозиторием, потому что её собирает конвейер, а не автор.
+
+| Проект | О чём | Технологии |
+|---|---|---|
+| [Домашний медиасервер на k3s](https://github.com/sher2yja/home-media-k3s) | Шесть сервисов медиатеки в кластере k3s и установщик, который ставит их на чужую машину одним файлом — без командной строки и без единой зависимости. Конвейер поднимает настоящий k3s и проверяет установку тем же кодом, что и у пользователя. [Релизы](https://github.com/sher2yja/home-media-k3s/releases) | ![k3s](https://img.shields.io/badge/k3s-FFC61C?style=flat-square&logo=k3s&logoColor=black) ![Kubernetes](https://img.shields.io/badge/Kubernetes-326CE5?style=flat-square&logo=kubernetes&logoColor=white) ![Python](https://img.shields.io/badge/Python-3776AB?style=flat-square&logo=python&logoColor=white) ![Ansible](https://img.shields.io/badge/Ansible-EE0000?style=flat-square&logo=ansible&logoColor=white) ![GitHub Actions](https://img.shields.io/badge/GitHub%20Actions-2088FF?style=flat-square&logo=github-actions&logoColor=white) |
 
 ### Главный проект
 
