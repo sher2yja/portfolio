@@ -51,5 +51,5 @@
     "Disk utilization": {"main": [[{"node": "Format summary", "type": "main", "index": 0}]]},
     "Format summary": {"main": [[{"node": "Telegram summary", "type": "main", "index": 0}]]}
   },
-  "settings": {"executionOrder": "v1"}, "active": false
+  "settings": {"executionOrder": "v1", "timezone": "Europe/Amsterdam"}, "active": false
 }

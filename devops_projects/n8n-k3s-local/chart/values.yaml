@@ -1,5 +1,5 @@
 n8n:
-  version: "2.40.6"
+  version: "2.40.7"
   image: docker.n8n.io/n8nio/n8n
   imageTag: ""
   replicas: 1
