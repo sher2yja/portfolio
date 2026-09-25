@@ -11,7 +11,10 @@ metadata:
   namespace: do14-helm
 rules:
   - apiGroups: [""]
-    resources: [configmaps, secrets, services, persistentvolumeclaims, pods]
+    resources: [configmaps, secrets, services, serviceaccounts, persistentvolumeclaims, pods]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [rbac.authorization.k8s.io]
+    resources: [roles, rolebindings]
     verbs: [get, list, watch, create, update, patch, delete]
   - apiGroups: [apps]
     resources: [deployments, statefulsets]
@@ -41,7 +44,10 @@ metadata:
   namespace: do14-production
 rules:
   - apiGroups: [""]
-    resources: [configmaps, secrets, services, persistentvolumeclaims, pods]
+    resources: [configmaps, secrets, services, serviceaccounts, persistentvolumeclaims, pods]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [rbac.authorization.k8s.io]
+    resources: [roles, rolebindings]
     verbs: [get, list, watch, create, update, patch, delete]
   - apiGroups: [apps]
     resources: [deployments, statefulsets]

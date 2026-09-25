@@ -22,6 +22,21 @@ data:
       - job_name: n8n-webhook
         static_configs:
           - targets: [do14-webhook.do14-helm.svc.cluster.local:5678]
+      - job_name: postgres
+        static_configs:
+          - targets: [postgres-exporter.do14-helm.svc.cluster.local:9187]
+      - job_name: postgres-production
+        static_configs:
+          - targets: [postgres-exporter.do14-production.svc.cluster.local:9187]
+      - job_name: node
+        static_configs:
+          - targets: [node-exporter.do14-monitoring.svc.cluster.local:9100]
+      - job_name: pod-state-staging
+        static_configs:
+          - targets: [do14-cluster-summary.do14-helm.svc.cluster.local:8080]
+      - job_name: pod-state-production
+        static_configs:
+          - targets: [do14-cluster-summary.do14-production.svc.cluster.local:8080]
   rules.yml: |
     groups:
       - name: do14-n8n
@@ -49,6 +64,143 @@ data:
             labels: {severity: warning}
             annotations:
               summary: "В n8n появились неуспешные исполнения"
+          - alert: PostgresUnavailable
+            expr: up{job=~"postgres.*"} == 0 or pg_up{job=~"postgres.*"} == 0
+            for: 1m
+            labels: {severity: critical}
+            annotations:
+              summary: "PostgreSQL недоступен"
+          - alert: PostgresDatabaseGrowing
+            expr: pg_database_size_bytes{datname="n8n"} - min_over_time(pg_database_size_bytes{datname="n8n"}[1h]) > 25 * 1024 * 1024
+            for: 5m
+            labels: {severity: warning}
+            annotations:
+              summary: "База n8n выросла более чем на 25 МБ за час"
+          - alert: NodeDiskNearlyFull
+            expr: node_filesystem_avail_bytes{job="node",mountpoint="/"} / node_filesystem_size_bytes{job="node",mountpoint="/"} < 0.1
+            for: 5m
+            labels: {severity: warning}
+            annotations:
+              summary: "На диске VM кластера осталось менее 10%"
+          - alert: PodStateMetricsUnavailable
+            expr: up{job=~"pod-state.*"} == 0
+            for: 1m
+            labels: {severity: warning}
+            annotations:
+              summary: "Метрики состояния Pod недоступны"
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: node-exporter
+  namespace: do14-monitoring
+spec:
+  selector:
+    matchLabels: {app: do14-node-exporter}
+  template:
+    metadata:
+      labels: {app: do14-node-exporter}
+    spec:
+      containers:
+        - name: node-exporter
+          image: quay.io/prometheus/node-exporter:v1.10.2
+          args: [--path.rootfs=/host]
+          ports:
+            - {containerPort: 9100}
+          resources:
+            requests: {cpu: 10m, memory: 32Mi}
+            limits: {memory: 128Mi}
+          volumeMounts:
+            - {name: host-root, mountPath: /host, readOnly: true}
+      volumes:
+        - name: host-root
+          hostPath: {path: /, type: Directory}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: node-exporter
+  namespace: do14-monitoring
+spec:
+  selector: {app: do14-node-exporter}
+  ports:
+    - {port: 9100, targetPort: 9100}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres-exporter
+  namespace: do14-helm
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: do14-postgres-exporter}
+  template:
+    metadata:
+      labels: {app: do14-postgres-exporter}
+    spec:
+      containers:
+        - name: postgres-exporter
+          image: quay.io/prometheuscommunity/postgres-exporter:v0.20.1
+          env:
+            - {name: DATA_SOURCE_URI, value: "do14-postgres:5432/n8n?sslmode=disable"}
+            - {name: DATA_SOURCE_USER, value: n8n}
+            - name: DATA_SOURCE_PASS
+              valueFrom:
+                secretKeyRef: {name: n8n-secrets, key: POSTGRES_PASSWORD}
+          ports:
+            - {containerPort: 9187}
+          resources:
+            requests: {cpu: 10m, memory: 32Mi}
+            limits: {memory: 128Mi}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-exporter
+  namespace: do14-helm
+spec:
+  selector: {app: do14-postgres-exporter}
+  ports:
+    - {port: 9187, targetPort: 9187}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres-exporter
+  namespace: do14-production
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: do14-postgres-exporter}
+  template:
+    metadata:
+      labels: {app: do14-postgres-exporter}
+    spec:
+      containers:
+        - name: postgres-exporter
+          image: quay.io/prometheuscommunity/postgres-exporter:v0.20.1
+          env:
+            - {name: DATA_SOURCE_URI, value: "do14-postgres:5432/n8n?sslmode=disable"}
+            - {name: DATA_SOURCE_USER, value: n8n}
+            - name: DATA_SOURCE_PASS
+              valueFrom:
+                secretKeyRef: {name: n8n-secrets, key: POSTGRES_PASSWORD}
+          ports:
+            - {containerPort: 9187}
+          resources:
+            requests: {cpu: 10m, memory: 32Mi}
+            limits: {memory: 128Mi}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-exporter
+  namespace: do14-production
+spec:
+  selector: {app: do14-postgres-exporter}
+  ports:
+    - {port: 9187, targetPort: 9187}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -57,6 +209,7 @@ metadata:
   namespace: do14-monitoring
 spec:
   replicas: 1
+  strategy: {type: Recreate}
   selector:
     matchLabels: {app: do14-prometheus}
   template:
@@ -81,7 +234,18 @@ spec:
         - name: config
           configMap: {name: prometheus-config}
         - name: data
-          emptyDir: {}
+          persistentVolumeClaim: {claimName: prometheus-data}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: prometheus-data
+  namespace: do14-monitoring
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: local-path
+  resources:
+    requests: {storage: 1Gi}
 ---
 apiVersion: v1
 kind: Service
@@ -124,7 +288,12 @@ data:
       "time": {"from": "now-1h", "to": "now"},
       "panels": [
         {"id": 1, "type": "timeseries", "title": "Waiting and active jobs", "gridPos": {"x": 0, "y": 0, "w": 12, "h": 8}, "targets": [{"expr": "n8n_scaling_mode_queue_jobs_waiting", "legendFormat": "waiting"}, {"expr": "n8n_scaling_mode_queue_jobs_active", "legendFormat": "active"}]},
-        {"id": 2, "type": "timeseries", "title": "Completed and failed jobs", "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8}, "targets": [{"expr": "rate(n8n_scaling_mode_queue_jobs_completed[5m])", "legendFormat": "completed/s"}, {"expr": "rate(n8n_scaling_mode_queue_jobs_failed[5m])", "legendFormat": "failed/s"}]}
+        {"id": 2, "type": "timeseries", "title": "Completed and failed jobs", "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8}, "targets": [{"expr": "rate(n8n_scaling_mode_queue_jobs_completed[5m])", "legendFormat": "completed/s"}, {"expr": "rate(n8n_scaling_mode_queue_jobs_failed[5m])", "legendFormat": "failed/s"}]},
+        {"id": 3, "type": "stat", "title": "PostgreSQL available", "gridPos": {"x": 0, "y": 8, "w": 6, "h": 4}, "targets": [{"expr": "pg_up{job=~\"postgres.*\"}", "legendFormat": "{{job}}"}]},
+        {"id": 4, "type": "timeseries", "title": "n8n database size", "gridPos": {"x": 6, "y": 8, "w": 18, "h": 8}, "fieldConfig": {"defaults": {"unit": "bytes"}}, "targets": [{"expr": "pg_database_size_bytes{datname=\"n8n\"}", "legendFormat": "{{job}}"}]},
+        {"id": 5, "type": "stat", "title": "Cluster VM disk available", "gridPos": {"x": 0, "y": 16, "w": 6, "h": 4}, "fieldConfig": {"defaults": {"unit": "percentunit"}}, "targets": [{"expr": "node_filesystem_avail_bytes{job=\"node\",mountpoint=\"/\"} / node_filesystem_size_bytes{job=\"node\",mountpoint=\"/\"}"}]},
+        {"id": 6, "type": "timeseries", "title": "Webhook execution p95", "gridPos": {"x": 6, "y": 16, "w": 9, "h": 8}, "fieldConfig": {"defaults": {"unit": "s"}}, "targets": [{"expr": "histogram_quantile(0.95, sum by (le) (rate(n8n_workflow_execution_duration_seconds_bucket{job=\"n8n-webhook\"}[1h])))"}]},
+        {"id": 7, "type": "stat", "title": "Queue job failure share (1h)", "gridPos": {"x": 15, "y": 16, "w": 9, "h": 4}, "fieldConfig": {"defaults": {"unit": "percentunit"}}, "targets": [{"expr": "sum(increase(n8n_scaling_mode_queue_jobs_failed{job=\"n8n-main\"}[1h])) / clamp_min(sum(increase(n8n_scaling_mode_queue_jobs_completed{job=\"n8n-main\"}[1h])) + sum(increase(n8n_scaling_mode_queue_jobs_failed{job=\"n8n-main\"}[1h])), 1)"}]}
       ]
     }
 ---

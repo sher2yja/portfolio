@@ -1,0 +1,67 @@
+{
+  "id": "DO14CiFailureWatch",
+  "name": "DO14 CI failure watch",
+  "nodes": [
+    {
+      "parameters": {"rule": {"interval": [{"field": "minutes", "minutesInterval": 5}]}},
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 0],
+      "id": "9e127dc1-ded8-4d47-853e-c19a73bb1ef8",
+      "name": "Every five minutes"
+    },
+    {
+      "parameters": {
+        "url": "https://api.github.com/repos/sher2yja/portfolio/actions/workflows/do14-n8n.yml/runs?status=failure&per_page=30",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [220, 0],
+      "id": "3aa3aef4-7e0d-4a8c-92fd-f21f8c3d784d",
+      "name": "Failed GitHub runs"
+    },
+    {
+      "parameters": {
+        "jsCode": "const runs = $input.first().json.workflow_runs;\nif (!Array.isArray(runs)) throw new Error('GitHub did not return workflow_runs');\nconst data = $getWorkflowStaticData('global');\nif (!data.notifiedRunIds) { data.notifiedRunIds = runs.map(run => String(run.id)); return []; }\nconst seen = new Set(data.notifiedRunIds);\nconst fresh = runs.filter(run => run.id && !seen.has(String(run.id))).reverse();\nif (!fresh.length) return [];\nconst lines = fresh.map(run => `#${run.run_number} (${run.head_branch ?? 'unknown branch'}): ${run.html_url}`);\nreturn [{ json: { ids: fresh.map(run => String(run.id)), text: `🔴 DO14 CI: ${fresh.length} failed run(s)\\n${lines.join('\\n')}` } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [440, 0],
+      "id": "8df47c31-d651-4645-b276-1d723eb4efca",
+      "name": "New failures"
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "SET_CHAT_ID_IN_N8N",
+        "text": "={{ $json.text }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [660, 0],
+      "id": "af8a694b-f1d1-49e9-8f28-d1126698527a",
+      "name": "Telegram notification"
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $getWorkflowStaticData('global');\nconst sent = $('New failures').first().json.ids;\ndata.notifiedRunIds = [...new Set([...(data.notifiedRunIds ?? []), ...sent])].slice(-100);\nreturn $input.all();"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [880, 0],
+      "id": "18bdd1e5-0e80-45f6-ae88-5632f117b82e",
+      "name": "Remember notified runs"
+    }
+  ],
+  "connections": {
+    "Every five minutes": {"main": [[{"node": "Failed GitHub runs", "type": "main", "index": 0}]]},
+    "Failed GitHub runs": {"main": [[{"node": "New failures", "type": "main", "index": 0}]]},
+    "New failures": {"main": [[{"node": "Telegram notification", "type": "main", "index": 0}]]},
+    "Telegram notification": {"main": [[{"node": "Remember notified runs", "type": "main", "index": 0}]]}
+  },
+  "settings": {"executionOrder": "v1"},
+  "active": false
+}

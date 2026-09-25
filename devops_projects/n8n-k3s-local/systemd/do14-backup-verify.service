@@ -1,0 +1,6 @@
+[Unit]
+Description=Verify DO14 production backup by restoring into temporary PostgreSQL
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/bash %h/Documents/my_rep/DO14/src/scripts/verify-backup-scheduled.sh

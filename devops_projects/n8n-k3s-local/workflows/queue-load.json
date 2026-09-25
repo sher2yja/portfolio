@@ -12,15 +12,15 @@
       "webhookId": "do14-load"
     },
     {
-      "parameters": {"jsCode": "await new Promise(resolve => setTimeout(resolve, 3000)); return [{ json: { ok: true } }];"},
+      "parameters": {"jsCode": "const requested = Number($input.first().json.body?.delayMs ?? 3000); const delayMs = Number.isFinite(requested) ? Math.min(30000, Math.max(0, requested)) : 3000; await new Promise(resolve => setTimeout(resolve, delayMs)); return [{ json: { ok: true, delayMs } }];"},
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [240, 0],
       "id": "9b7f7392-329c-4078-b3fc-53a7bb5eb2cb",
-      "name": "Three-second job"
+      "name": "Delayed job"
     }
   ],
-  "connections": {"Webhook": {"main": [[{"node": "Three-second job", "type": "main", "index": 0}]]}},
+  "connections": {"Webhook": {"main": [[{"node": "Delayed job", "type": "main", "index": 0}]]}},
   "settings": {"executionOrder": "v1"},
   "active": false
 }

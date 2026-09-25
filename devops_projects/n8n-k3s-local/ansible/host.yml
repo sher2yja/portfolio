@@ -1,0 +1,147 @@
+---
+- name: Настроить мониторинг и резервирование на локальном ПК
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    project_dir: "{{ playbook_dir | dirname }}"
+    user_unit_dir: "{{ lookup('env', 'HOME') }}/.config/systemd/user"
+  tasks:
+    - name: Проверить локальный файл production-секретов
+      ansible.builtin.stat:
+        path: "{{ project_dir }}/.env.production"
+      register: production_env
+      no_log: true
+
+    - name: Потребовать настроенные production-секреты
+      ansible.builtin.assert:
+        that: production_env.stat.isreg | default(false)
+        fail_msg: "Создайте .env.production в каталоге проекта перед включением таймеров."
+
+    - name: Проверить секреты приложения в обоих namespace
+      ansible.builtin.command:
+        argv:
+          - bash
+          - scripts/vm-kubectl.sh
+          - -n
+          - "{{ item }}"
+          - get
+          - secret
+          - n8n-secrets
+          - -o
+          - name
+        chdir: "{{ project_dir }}"
+      loop:
+        - do14-helm
+        - do14-production
+      changed_when: false
+      no_log: true
+
+    - name: Создать каталог пользовательских unit-файлов
+      ansible.builtin.file:
+        path: "{{ user_unit_dir }}"
+        state: directory
+        mode: '0755'
+
+    - name: Подключить существующие unit-файлы
+      ansible.builtin.file:
+        src: "{{ project_dir }}/systemd/{{ item }}"
+        dest: "{{ user_unit_dir }}/{{ item }}"
+        state: link
+      loop:
+        - do14-backup.service
+        - do14-backup.timer
+        - do14-backup-verify.service
+        - do14-backup-verify.timer
+      notify: Обновить пользовательский systemd
+
+    - name: Создать каталоги для путей текущего checkout
+      ansible.builtin.file:
+        path: "{{ user_unit_dir }}/{{ item }}.d"
+        state: directory
+        mode: '0755'
+      loop:
+        - do14-backup.service
+        - do14-backup-verify.service
+
+    - name: Настроить путь проекта для ежедневной копии
+      ansible.builtin.copy:
+        dest: "{{ user_unit_dir }}/do14-backup.service.d/project.conf"
+        mode: '0644'
+        content: |
+          [Service]
+          WorkingDirectory={{ project_dir }}
+          ExecStart=
+          ExecStart=/usr/bin/bash {{ project_dir }}/scripts/backup-scheduled.sh
+      notify: Обновить пользовательский systemd
+
+    - name: Настроить путь проекта для еженедельной проверки
+      ansible.builtin.copy:
+        dest: "{{ user_unit_dir }}/do14-backup-verify.service.d/project.conf"
+        mode: '0644'
+        content: |
+          [Service]
+          ExecStart=
+          ExecStart=/usr/bin/bash {{ project_dir }}/scripts/verify-backup-scheduled.sh
+      notify: Обновить пользовательский systemd
+
+    - ansible.builtin.meta: flush_handlers
+
+    - name: Включить ежедневную и еженедельную копию
+      ansible.builtin.systemd_service:
+        name: "{{ item }}"
+        scope: user
+        enabled: true
+        state: started
+      loop:
+        - do14-backup.timer
+        - do14-backup-verify.timer
+
+    - name: Применить существующий манифест мониторинга
+      ansible.builtin.command:
+        argv:
+          - bash
+          - scripts/vm-kubectl.sh
+          - apply
+          - -f
+          - monitoring/local.yaml
+        chdir: "{{ project_dir }}"
+      register: monitoring_apply
+      changed_when: "'created' in monitoring_apply.stdout or 'configured' in monitoring_apply.stdout"
+
+    - name: Перезапустить сервисы после изменения ConfigMap
+      ansible.builtin.command:
+        argv:
+          - bash
+          - scripts/vm-kubectl.sh
+          - rollout
+          - restart
+          - deployment/prometheus
+          - deployment/grafana
+          - -n
+          - do14-monitoring
+        chdir: "{{ project_dir }}"
+      when: "'configmap/prometheus-config configured' in monitoring_apply.stdout or 'configmap/grafana-provisioning configured' in monitoring_apply.stdout"
+
+    - name: Дождаться работающего мониторинга
+      ansible.builtin.command:
+        argv:
+          - bash
+          - scripts/vm-kubectl.sh
+          - rollout
+          - status
+          - "{{ item }}"
+          - -n
+          - do14-monitoring
+          - --timeout=120s
+        chdir: "{{ project_dir }}"
+      loop:
+        - deployment/prometheus
+        - deployment/grafana
+      changed_when: false
+
+  handlers:
+    - name: Обновить пользовательский systemd
+      ansible.builtin.systemd_service:
+        scope: user
+        daemon_reload: true

@@ -1,0 +1,7 @@
+[Unit]
+Description=DO14 production backup to the host PC
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/Documents/my_rep/DO14/src
+ExecStart=/usr/bin/bash scripts/backup-scheduled.sh

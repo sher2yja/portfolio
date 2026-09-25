@@ -1,0 +1,55 @@
+{
+  "id": "DO14ClusterSummary",
+  "name": "DO14 cluster summary",
+  "nodes": [
+    {
+      "parameters": {"rule": {"interval": [{"field": "days", "daysInterval": 1, "triggerAtHour": 9}]}},
+      "type": "n8n-nodes-base.scheduleTrigger", "typeVersion": 1.2,
+      "position": [0, 0], "id": "3542da42-e218-4481-9338-f63e8adfa310", "name": "Every morning"
+    },
+    {
+      "parameters": {
+        "url": "http://prometheus.do14-monitoring.svc.cluster.local:9090/api/v1/query", "sendQuery": true,
+        "queryParameters": {"parameters": [{"name": "query", "value": "sum by (namespace,pod) (increase(kube_pod_container_status_restarts_total[24h])) > 0 unless on(namespace,pod) kube_pod_status_phase{phase=\"Succeeded\"} == 1"}]}, "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.2,
+      "position": [220, 0], "id": "42db096a-993d-44ce-8305-fd519fa0d6f7", "name": "Restarting Pods"
+    },
+    {
+      "parameters": {
+        "url": "http://prometheus.do14-monitoring.svc.cluster.local:9090/api/v1/query", "sendQuery": true,
+        "queryParameters": {"parameters": [{"name": "query", "value": "kube_pod_status_ready{condition=\"true\"} unless on(namespace,pod) kube_pod_status_phase{phase=\"Succeeded\"} == 1"}]}, "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.2,
+      "position": [440, 0], "id": "5794c3be-6390-4075-b7be-8b20296668ae", "name": "Unready Pods"
+    },
+    {
+      "parameters": {
+        "url": "http://prometheus.do14-monitoring.svc.cluster.local:9090/api/v1/query", "sendQuery": true,
+        "queryParameters": {"parameters": [{"name": "query", "value": "100 * (1 - node_filesystem_avail_bytes{job=\"node\",mountpoint=\"/\"} / node_filesystem_size_bytes{job=\"node\",mountpoint=\"/\"})"}]}, "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.2,
+      "position": [660, 0], "id": "e560f928-6de6-46bb-afae-59e58cc9e701", "name": "Disk utilization"
+    },
+    {
+      "parameters": {
+        "jsCode": "const restarts = $('Restarting Pods').first().json;\nconst ready = $('Unready Pods').first().json;\nconst disk = $input.first().json;\nif ([restarts, ready, disk].some(r => r.status !== 'success' || !Array.isArray(r.data?.result))) throw new Error('Cluster metrics unavailable');\nif (!ready.data.result.length || !disk.data.result.length) throw new Error('Pod or disk metrics unavailable');\nconst pods = new Map();\nfor (const row of restarts.data.result) { const name = `${row.metric.namespace}/${row.metric.pod}`; pods.set(name, { restarts: Number(row.value[1]), unready: false }); }\nfor (const row of ready.data.result.filter(r => Number(r.value[1]) === 0)) { const name = `${row.metric.namespace}/${row.metric.pod}`; const pod = pods.get(name) ?? { restarts: 0, unready: false }; pod.unready = true; pods.set(name, pod); }\nconst lines = [...pods].sort(([a], [b]) => a.localeCompare(b)).map(([name, p]) => `• ${name}: ${p.restarts} restart(s)${p.unready ? ', unready' : ''}`);\nconst disks = disk.data.result.map(d => `${d.metric.instance ?? 'node'}: ${Number(d.value[1]).toFixed(1)}% used`);\nreturn [{ json: { text: ['DO14 cluster summary', `Pods needing attention: ${pods.size}`, ...lines, 'Disk:', ...disks].join('\\n') } }];"
+      },
+      "type": "n8n-nodes-base.code", "typeVersion": 2,
+      "position": [880, 0], "id": "259e1034-b335-4850-9e57-20127b87c426", "name": "Format summary"
+    },
+    {
+      "parameters": {"resource": "message", "operation": "sendMessage", "chatId": "SET_CHAT_ID_IN_N8N", "text": "={{ $json.text }}", "additionalFields": {}},
+      "type": "n8n-nodes-base.telegram", "typeVersion": 1.2,
+      "position": [1100, 0], "id": "1691d981-2777-42e3-bfdf-a3641a8645d3", "name": "Telegram summary"
+    }
+  ],
+  "connections": {
+    "Every morning": {"main": [[{"node": "Restarting Pods", "type": "main", "index": 0}]]},
+    "Restarting Pods": {"main": [[{"node": "Unready Pods", "type": "main", "index": 0}]]},
+    "Unready Pods": {"main": [[{"node": "Disk utilization", "type": "main", "index": 0}]]},
+    "Disk utilization": {"main": [[{"node": "Format summary", "type": "main", "index": 0}]]},
+    "Format summary": {"main": [[{"node": "Telegram summary", "type": "main", "index": 0}]]}
+  },
+  "settings": {"executionOrder": "v1"}, "active": false
+}
