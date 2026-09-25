@@ -1,0 +1,26 @@
+{
+  "id": "DO14QueueLoad",
+  "name": "DO14 queue load test",
+  "nodes": [
+    {
+      "parameters": {"httpMethod": "POST", "path": "do14-load", "responseMode": "lastNode", "options": {}},
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0],
+      "id": "b1066bb0-67e1-4904-9f66-abd1b70669e1",
+      "name": "Webhook",
+      "webhookId": "do14-load"
+    },
+    {
+      "parameters": {"jsCode": "await new Promise(resolve => setTimeout(resolve, 3000)); return [{ json: { ok: true } }];"},
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [240, 0],
+      "id": "9b7f7392-329c-4078-b3fc-53a7bb5eb2cb",
+      "name": "Three-second job"
+    }
+  ],
+  "connections": {"Webhook": {"main": [[{"node": "Three-second job", "type": "main", "index": 0}]]}},
+  "settings": {"executionOrder": "v1"},
+  "active": false
+}

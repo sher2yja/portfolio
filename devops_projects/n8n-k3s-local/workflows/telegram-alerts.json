@@ -1,0 +1,81 @@
+{
+  "id": "DO14TelegramAlerts",
+  "name": "DO14 Telegram alerts",
+  "nodes": [
+    {
+      "parameters": {"rule": {"interval": [{"field": "minutes", "minutesInterval": 1}]}},
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 0],
+      "id": "437cd2a2-fc6f-4d78-b2b9-d8c35918cf57",
+      "name": "Every minute"
+    },
+    {
+      "parameters": {
+        "url": "http://prometheus.do14-monitoring.svc.cluster.local:9090/api/v1/alerts",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [220, 0],
+      "id": "40106a92-829e-4cec-9b1c-4d99b2ed5698",
+      "name": "Prometheus alerts"
+    },
+    {
+      "parameters": {
+        "jsCode": "const alerts = $input.first().json.data?.alerts ?? [];\nreturn [{ json: { alerts: alerts.filter(a => a.state === 'firing' && a.labels?.alertname).map(a => ({ alertname: a.labels.alertname, summary: a.annotations?.summary ?? a.labels.alertname })) } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [440, 0],
+      "id": "af499f22-706c-47a4-9404-6017fb5166a3",
+      "name": "Firing alerts"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH current AS (SELECT alertname, summary FROM jsonb_to_recordset($1::jsonb) AS a(alertname text, summary text)), started AS (INSERT INTO do14_ops.alert_state AS s (alertname, firing) SELECT alertname, true FROM current ON CONFLICT (alertname) DO UPDATE SET firing = true WHERE NOT s.firing RETURNING alertname), stopped AS (UPDATE do14_ops.alert_state s SET firing = false WHERE s.firing AND NOT EXISTS (SELECT 1 FROM current c WHERE c.alertname = s.alertname) RETURNING alertname) SELECT 'firing' AS status, c.summary AS text FROM started s JOIN current c USING (alertname) UNION ALL SELECT 'resolved', 'алерт ' || alertname || ' снят' FROM stopped",
+        "options": {"queryReplacement": "={{ JSON.stringify($json.alerts) }}"}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [660, 0],
+      "id": "c53fc5c3-c20b-43ac-8f92-5d07c8ef875a",
+      "name": "Changed alert states",
+      "credentials": {"postgres": {"id": "DO14ProductionPgCredential", "name": "DO14 production PostgreSQL"}}
+    },
+    {
+      "parameters": {
+        "jsCode": "return $input.all().filter(x => x.json?.status).map(x => ({ json: { text: `${x.json.status === 'firing' ? '🔴' : '🟢'} DO14: ${x.json.text}` } }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [880, 0],
+      "id": "98cf7bee-458d-416b-9f20-13e16c616153",
+      "name": "Format notification"
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "SET_CHAT_ID_IN_N8N",
+        "text": "={{ $json.text }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1100, 0],
+      "id": "0ab8195c-0cbc-4790-b5b4-2ac31e33d6b5",
+      "name": "Telegram notification"
+    }
+  ],
+  "connections": {
+    "Every minute": {"main": [[{"node": "Prometheus alerts", "type": "main", "index": 0}]]},
+    "Prometheus alerts": {"main": [[{"node": "Firing alerts", "type": "main", "index": 0}]]},
+    "Firing alerts": {"main": [[{"node": "Changed alert states", "type": "main", "index": 0}]]},
+    "Changed alert states": {"main": [[{"node": "Format notification", "type": "main", "index": 0}]]},
+    "Format notification": {"main": [[{"node": "Telegram notification", "type": "main", "index": 0}]]}
+  },
+  "settings": {"executionOrder": "v1"},
+  "active": false
+}

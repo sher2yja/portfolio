@@ -12,6 +12,9 @@ data:
   prometheus.yml: |
     global:
       scrape_interval: 15s
+      evaluation_interval: 15s
+    rule_files:
+      - /etc/prometheus/rules.yml
     scrape_configs:
       - job_name: n8n-main
         static_configs:
@@ -19,6 +22,33 @@ data:
       - job_name: n8n-webhook
         static_configs:
           - targets: [do14-webhook.do14-helm.svc.cluster.local:5678]
+  rules.yml: |
+    groups:
+      - name: do14-n8n
+        rules:
+          - alert: N8nMainUnavailable
+            expr: up{job="n8n-main"} == 0
+            for: 1m
+            labels: {severity: critical}
+            annotations:
+              summary: "n8n main недоступен"
+          - alert: N8nWebhookUnavailable
+            expr: up{job="n8n-webhook"} == 0
+            for: 1m
+            labels: {severity: critical}
+            annotations:
+              summary: "n8n webhook недоступен"
+          - alert: N8nQueueBacklog
+            expr: n8n_scaling_mode_queue_jobs_waiting > 5
+            for: 2m
+            labels: {severity: warning}
+            annotations:
+              summary: "В очереди n8n более пяти заданий"
+          - alert: N8nExecutionFailures
+            expr: increase(n8n_scaling_mode_queue_jobs_failed[5m]) > 0
+            labels: {severity: warning}
+            annotations:
+              summary: "В n8n появились неуспешные исполнения"
 ---
 apiVersion: apps/v1
 kind: Deployment

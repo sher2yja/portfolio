@@ -32,12 +32,12 @@ Vagrant → Ubuntu VM → Ansible → k3s
 | `Vagrantfile`, `ansible/`, `runner/` | VM приложения, идемпотентная установка k3s и отдельная runner-VM |
 | `Dockerfile`, `experiments/` | собственный образ и два Compose-эксперимента |
 | `k8s/base/`, `chart/` | манифесты и Helm-чарт |
-| `monitoring/` | локальные Prometheus и Grafana |
+| `monitoring/` | локальные Prometheus и Grafana с правилами алертов |
 | `scripts/` | развёртывание, резервирование и восстановление |
-| `workflows/` | тесты очереди и сохранённого PostgreSQL credential |
+| `workflows/` | smoke-, нагрузочный и Telegram-сценарии |
 | `docs/` | контракт и операционные инструкции |
 | [main_report.md](main_report.md) | выполненные проверки, ограничения и воспроизведение |
 
 ### 📈 Итоговый результат
 
-На локальной VM проверены повторный Ansible-прогон без изменений, работа трёх ролей n8n, Helm upgrade и rollback, сбор метрик, автоматический staging и ручной production через GitHub Actions. Staging сохранил credential после обновления (`{"credential_ok":1}`); production-дамп и ключ восстановлены в отдельном namespace с тем же образом. Из свежего публичного клона создана отдельная VM, где Helm установил готовый стенд в пустой namespace. Подробные факты и команды — в [отчёте](main_report.md).
+На локальной VM проверены повторный Ansible-прогон без изменений, работа трёх ролей n8n, Helm upgrade и rollback, сбор метрик, срабатывание алерта и очередь из 50 заданий, автоматический staging и ручной production через GitHub Actions. Staging сохранил credential после обновления (`{"credential_ok":1}`); production-дамп и ключ восстановлены в отдельном namespace с тем же образом. Из свежего публичного клона создана отдельная VM, где Helm установил готовый стенд в пустой namespace. Production n8n отправил красное Telegram-уведомление о сбое staging и зелёное о восстановлении без повторов в промежуточных циклах. Токен и chat ID задаются только внутри n8n; использованный для опыта токен ещё нужно заменить. Подробные факты и команды — в [отчёте](main_report.md).

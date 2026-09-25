@@ -32,7 +32,20 @@ bash scripts/vm-kubectl.sh -- helm -n do14-helm history do14
 
 ## Мониторинг и восстановление
 
-После включения метрик main вернул `n8n_scaling_mode_queue_jobs_waiting 0` и `n8n_scaling_mode_queue_jobs_active 0`. Prometheus показал targets `n8n-main` и `n8n-webhook` в состоянии `up`, Grafana API нашёл дашборд `DO14 — n8n queue`. Это подтверждает сбор и визуализацию, но не проверяет реакцию алертов и не заменяет нагрузочный опыт.
+После включения метрик main вернул `n8n_scaling_mode_queue_jobs_waiting 0` и `n8n_scaling_mode_queue_jobs_active 0`. Prometheus показал targets `n8n-main` и `n8n-webhook` в состоянии `up`, Grafana API нашёл дашборд `DO14 — n8n queue`. Четыре правила проверены `promtool check rules`. При масштабировании staging main до нуля `N8nMainUnavailable` перешёл в `pending`, затем `firing`; после восстановления main алерт исчез, а `/healthz` вновь ответил `{"status":"ok"}`. Production оставался работоспособен. Доставка уведомления и нагрузка проверены отдельными опытами ниже.
+
+В production n8n работает `DO14 Telegram alerts`. Владелец задал chat ID и Telegram credential только в интерфейсе; токен и ID не находятся в JSON или Git. Для воспроизведения создайте отдельное состояние алертов и PostgreSQL credential, затем импортируйте `workflows/telegram-alerts.json` с подстановкой Telegram credential и chat ID внутри n8n:
+
+```bash
+bash scripts/vm-kubectl.sh -n do14-production exec -i do14-postgres-0 -- \
+  psql -v ON_ERROR_STOP=1 -U n8n -d n8n < monitoring/alert-state.sql
+bash scripts/import-local-postgres-credential.sh \
+  do14-production .env.production DO14ProductionPgCredential 'DO14 production PostgreSQL'
+```
+
+Первый вариант workflow использовал static data. При одном `firing` два соседних запуска отправили два одинаковых сообщения; поэтому он заменён атомарным переходом состояния в PostgreSQL. SQL-транзакция с откатом дала одну строку для нового алерта, ноль для повтора и одну для снятия. В повторном опыте staging main был остановлен: Prometheus перешёл в `firing`, Telegram прислал одно красное сообщение; два последующих запуска Telegram-узел не вызывали. После восстановления main и `/healthz` пришло одно зелёное сообщение; в таблице `do14_ops.alert_state` состояние стало `firing=false`. Staging и production main вернулись к 1/1. Токен, временно использованный при этой проверке, нужно отозвать и заменить в Telegram credential, затем проверить отправку повторно.
+
+Для опыта с очередью в staging импортирован и опубликован `workflows/queue-load.json`: каждый вызов webhook выполняет трёхсекундную задачу на worker. Один пробный запрос и затем 50 параллельных запросов вернули HTTP 200. Во время серии метрики main показали 15 ожидающих и 5 активных заданий, после серии — 0 и 0; счётчик завершённых заданий после рестарта main достиг 51, ошибок — 0. Это подтверждает рост и рассасывание очереди, но не проверяет автоматическое масштабирование.
 
 `scripts/backup-local.sh` создал дамп, копию `.env` и values-файл, все с контрольными суммами. Первый `scripts/restore-local.sh` развернул их в новом `do14-restore-test` namespace: сначала приложение было масштабировано до нуля, после импорта дампа запущено; Helm завершился успешно. Исходная и восстановленная БД содержали по 142 публичные таблицы. Это был только тест механики.
 
