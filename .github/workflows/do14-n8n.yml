@@ -50,18 +50,53 @@ jobs:
   test:
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
     steps:
       - uses: actions/checkout@v4
       - uses: azure/setup-helm@v4
         with:
           version: v3.21.3
-      - name: Проверить Helm-чарт для обоих окружений
+      - name: Установить kubeconform
+        run: |
+          curl -fsSL -o /tmp/kubeconform.tar.gz https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz
+          tar -xzf /tmp/kubeconform.tar.gz -C /tmp kubeconform
+      - name: Проверить Helm-чарт и схемы Kubernetes для обоих окружений
         run: |
           for values in staging production; do
             helm lint "$PROJECT/chart" --set existingSecret=n8n-secrets -f "$PROJECT/chart/values-$values.yaml"
-            helm template do14 "$PROJECT/chart" --set existingSecret=n8n-secrets -f "$PROJECT/chart/values-$values.yaml" > /tmp/do14-rendered.yaml
-            test -s /tmp/do14-rendered.yaml
+            helm template do14 "$PROJECT/chart" -n "do14-$values" --set existingSecret=n8n-secrets -f "$PROJECT/chart/values-$values.yaml" > "/tmp/do14-$values.yaml"
+            /tmp/kubeconform -strict -summary -kubernetes-version 1.30.0 "/tmp/do14-$values.yaml"
           done
+      - name: Проверить, что сломанный чарт останавливается до деплоя
+        run: |
+          cp -a "$PROJECT/chart" /tmp/do14-broken-chart
+          printf '\n---\napiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: deliberately-invalid\nspec:\n  replicas: invalid\n' >> /tmp/do14-broken-chart/templates/broken.yaml
+          helm template do14 /tmp/do14-broken-chart -n do14-staging --set existingSecret=n8n-secrets -f "$PROJECT/chart/values-staging.yaml" > /tmp/do14-broken.yaml
+          if /tmp/kubeconform -strict -summary -kubernetes-version 1.30.0 /tmp/do14-broken.yaml > /tmp/do14-broken-result.log 2>&1; then
+            echo '::error::Сломанный чарт прошёл проверку схем'
+            exit 1
+          fi
+          cat /tmp/do14-broken-result.log
+          grep -Eq 'Invalid: [1-9]' /tmp/do14-broken-result.log
+      - name: Найти секреты в коде
+        uses: aquasecurity/trivy-action@0.35.0
+        with:
+          scan-type: fs
+          scan-ref: ${{ env.PROJECT }}
+          scanners: secret
+          exit-code: '1'
+      - name: Сканировать собранный образ
+        uses: aquasecurity/trivy-action@0.35.0
+        env:
+          TRIVY_USERNAME: ${{ github.actor }}
+          TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          image-ref: ${{ needs.build.outputs.image }}
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          exit-code: '1'
 
   staging:
     needs: [build, test]

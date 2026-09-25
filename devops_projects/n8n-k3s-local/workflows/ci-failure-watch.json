@@ -23,7 +23,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const runs = $input.first().json.workflow_runs;\nif (!Array.isArray(runs)) throw new Error('GitHub did not return workflow_runs');\nconst data = $getWorkflowStaticData('global');\nif (!data.notifiedRunIds) { data.notifiedRunIds = runs.map(run => String(run.id)); return []; }\nconst seen = new Set(data.notifiedRunIds);\nconst fresh = runs.filter(run => run.id && !seen.has(String(run.id))).reverse();\nif (!fresh.length) return [];\nconst lines = fresh.map(run => `#${run.run_number} (${run.head_branch ?? 'unknown branch'}): ${run.html_url}`);\nreturn [{ json: { ids: fresh.map(run => String(run.id)), text: `🔴 DO14 CI: ${fresh.length} failed run(s)\\n${lines.join('\\n')}` } }];"
+        "jsCode": "const runs = $input.first().json.workflow_runs;\nif (!Array.isArray(runs)) throw new Error('GitHub did not return workflow_runs');\nconst data = $getWorkflowStaticData('global');\nif (!data.notifiedRunIds) { data.notifiedRunIds = runs.map(run => String(run.id)); return []; }\nconst seen = new Set(data.notifiedRunIds);\nconst fresh = runs.filter(run => run.id && !seen.has(String(run.id))).reverse();\nif (!fresh.length) return [];\nconst lines = fresh.map(run => `#${Number(run.run_number)}: https://github.com/sher2yja/portfolio/actions/runs/${Number(run.id)}`);\nreturn [{ json: { ids: fresh.map(run => String(run.id)), text: `🔴 DO14 CI: ${fresh.length} failed run(s)\\n${lines.join('\\n')}` } }];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
