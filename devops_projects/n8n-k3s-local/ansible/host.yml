@@ -50,9 +50,7 @@
         state: link
       loop:
         - do14-backup.service
-        - do14-backup.timer
         - do14-backup-verify.service
-        - do14-backup-verify.timer
       notify: Обновить пользовательский systemd
 
     - name: Создать каталоги для путей текущего checkout
@@ -86,16 +84,6 @@
       notify: Обновить пользовательский systemd
 
     - ansible.builtin.meta: flush_handlers
-
-    - name: Включить ежедневную и еженедельную копию
-      ansible.builtin.systemd_service:
-        name: "{{ item }}"
-        scope: user
-        enabled: true
-        state: started
-      loop:
-        - do14-backup.timer
-        - do14-backup-verify.timer
 
     - name: Применить существующий манифест мониторинга
       ansible.builtin.command:
