@@ -1,14 +1,14 @@
 # Контракт приложения и платформы
 
-Контракт локального развёртывания через GitHub Actions. VPS не планируется. До первого пуша workflow не может быть проверен на GitHub.
+Контракт локального развёртывания через GitHub Actions. VPS не планируется. Build, test, автоматический staging и ручной production проверены на GitHub.
 
 | Параметр | Владелец | Значение и проверка |
 |---|---|---|
 | Версия n8n | чарт | `n8n.version` задаёт версию runner и исходного n8n; собранный поверх него образ имеет тег git SHA в `n8n.imageTag` |
 | Секреты | оператор платформы | `existingSecret` существует в namespace; содержит `N8N_ENCRYPTION_KEY`, `N8N_RUNNERS_AUTH_TOKEN`, `POSTGRES_PASSWORD`; чарт не генерирует их |
-| Хранение | платформа | StorageClass предоставляет PVC для PostgreSQL и Redis; перед production нужен отдельный проверенный backup PostgreSQL |
+| Хранение | платформа | StorageClass предоставляет отдельные PVC PostgreSQL и Redis; production-дамп, ключ и применённые Helm values проверены восстановлением в новом namespace |
 | Адрес | платформа | сервис доступен только на локальной VM; публичные DNS и TLS не заявлены |
-| Registry | GitHub Actions | CI публикует образ в GHCR с тегом полного git SHA; пакет должен быть публичным до первого деплоя, иначе нужен постоянный `imagePullSecrets` с отдельным read-only токеном |
+| Registry | GitHub Actions | CI публикует образ в GHCR с тегом полного git SHA; кластер скачал образ без pull-secret. Если пакет станет приватным, нужен постоянный `imagePullSecrets` с отдельным read-only токеном |
 | Runner | локальная платформа | отдельная VM без общей папки и Docker socket; kubeconfig имеет Role только в `do14-helm` и `do14-production`, production запускается вручную |
 
 Применение чарта не создаёт Secret. Для разных окружений нужны разные ключи и PostgreSQL. Ключ шифрования сохраняется отдельно от дампа базы: потеря любого из них делает восстановление credentials неполным.

@@ -2,11 +2,11 @@
 
 ## Границы работы
 
-Это воспроизводимый локальный стенд на VM приложения и отдельной runner-VM, а не публичный сервис. Он демонстрирует путь от подготовки кластера до восстановления workflow с сохранённым доступом к PostgreSQL. GitHub Actions согласован вместо GitLab CI, но запуск конвейера и production-развёртывание пока не подтверждены.
+Это воспроизводимый локальный стенд на VM приложения и отдельной runner-VM, а не публичный сервис. Он демонстрирует путь от подготовки кластера до восстановления workflow с сохранённым доступом к PostgreSQL. GitHub Actions согласован вместо GitLab CI; build, test, автоматический staging и ручной production проверены.
 
 ## 1. Подготовка стенда
 
-`Vagrantfile` создаёт Ubuntu 24.04 с 2 vCPU и 4 ГБ RAM. `ansible/site.yml` устанавливает k3s `v1.35.8+k3s1` и отключает встроенный Traefik. Повторный `vagrant provision`, запущенный из этой папки портфолио на существующей VM, завершился с `changed=0` (7 задач `ok`, 2 пропущены). Затем из этой же папки создана **новая** VM: Ansible выполнил 9 задач без ошибок, узел k3s перешёл в `Ready`.
+`Vagrantfile` создаёт Ubuntu 24.04 с 4 vCPU и 6 ГБ RAM для двух окружений. `ansible/site.yml` устанавливает k3s `v1.35.8+k3s1` и отключает встроенный Traefik. Повторный `vagrant provision`, запущенный из этой папки портфолио на существующей VM, завершился с `changed=0` (7 задач `ok`, 2 пропущены). Затем из этой же папки создана **новая** VM: Ansible выполнил 9 задач без ошибок, узел k3s перешёл в `Ready`. Начальная конфигурация была 2 vCPU/4 ГБ; после добавления production лимиты увеличены без замены диска VM.
 
 ```bash
 bash scripts/init-local-env.sh
@@ -43,7 +43,7 @@ bash scripts/vm-kubectl.sh -- helm upgrade do14 chart \
   --wait --timeout 10m
 ```
 
-Это доказывает локальную доставку собственного образа, но не проверяет публикацию образа в GHCR и автоматический деплой GitHub Actions.
+Этот опыт проверил локальную доставку собственного образа. Позднее GitHub Actions опубликовал образ в GHCR и автоматически развернул его в staging; результаты приведены ниже.
 
 ## 3. Обновление и откат
 
@@ -60,25 +60,29 @@ bash scripts/vm-kubectl.sh -n do14-monitoring port-forward service/grafana 3000:
 
 ## 5. Резервная копия и восстановление
 
-`scripts/backup-local.sh` сохраняет дамп PostgreSQL, values и `.env` с ключом шифрования; контрольные суммы позволяют выявить повреждение файлов. `scripts/restore-local.sh` принимает новый namespace и не перезаписывает исходный. В тесте дамп и ключ восстановлены в `do14-restore-credential`; workflow с PostgreSQL credential после этого выполнил `SELECT 1 AS credential_ok` и вернул `{"credential_ok":1}`. Это проверяет пригодность сохранённого доступа, а не только наличие таблиц.
+`scripts/backup-local.sh` сохраняет дамп PostgreSQL, фактически применённые Helm values с SHA образа и выбранный `.env` с ключом шифрования; контрольные суммы позволяют выявить повреждение файлов. `scripts/restore-local.sh` принимает новый namespace и не перезаписывает исходный. В тесте staging дамп и ключ восстановлены в `do14-restore-credential`; workflow с PostgreSQL credential после этого выполнил `SELECT 1 AS credential_ok` и вернул `{"credential_ok":1}`. Это проверяет пригодность сохранённого доступа, а не только наличие таблиц.
 
 ```bash
 bash scripts/backup-local.sh
 bash scripts/restore-local.sh backups/<имя-копии> do14-restore-test
+bash scripts/backup-local.sh backups/production-copy do14-production .env.production
+bash scripts/restore-local.sh backups/production-copy do14-production-restore
 ```
 
 Локальная копия на том же компьютере не защищает от его потери. Независимый носитель и восстановление после удаления всего стенда остаются отдельными непроведёнными проверками.
 
 ## 6. Локальный runner и границы проверки
 
-Создана отдельная Ubuntu VM `do14-runner` (2 vCPU, 2 ГБ RAM), без Vagrant shared folder. GitHub API показывает runner `online` с label `do14-deploy`. Внутри VM `kubectl auth can-i` вернул `yes` для Deployment в `do14-helm` и `do14-production`, `no` для Secrets в `kube-system` и создания Namespace. GitHub Actions ещё не запускался: workflow и проект не отправлены в репозиторий владельцем. После первого push образ в GHCR потребуется сделать публичным, иначе Kubernetes не скачает его; этот начальный шаг описан в [runner/README.md](runner/README.md).
+Создана отдельная Ubuntu VM `do14-runner` (2 vCPU, 2 ГБ RAM), без Vagrant shared folder. GitHub API показывает runner `online` с label `do14-deploy`. Внутри VM `kubectl auth can-i` вернул `yes` для Deployment в `do14-helm` и `do14-production`, `no` для Secrets в `kube-system` и создания Namespace.
+
+Реальный workflow [do14-n8n](../../.github/workflows/do14-n8n.yml) на коммите `7066ec56` собрал образ из базового `docker.io/n8nio/n8n:2.40.6`, опубликовал его в GHCR и проверил чарт. Первый staging-job упал, потому что ограниченной роли не хватало чтения ReplicaSet; рабочая ревизия 10 восстановлена, затем добавлены только `get/list/watch` для ReplicaSet в обоих namespace. Повторный staging-job [завершился успешно](https://github.com/sher2yja/portfolio/actions/runs/36134534960), все пять Pod стали `Running`, три роли n8n перешли на `ghcr.io/sher2yja/do14-n8n:7066ec56f9dcf0cbeb84fa78e4494341b12cf1d3`. После деплоя `/healthz` вернул `{"status":"ok"}`, а тестовый workflow с сохранённым доступом — `{"credential_ok":1}`. Кластер скачал пакет GHCR без pull-secret; ручная смена видимости не потребовалась.
+
+Первый production-job был отменён из-за `Insufficient memory`: VM расширена с 4 до 6 ГБ RAM и с 2 до 4 vCPU. После остановки старого тестового namespace нагрузка стабилизировалась. Повторный [production workflow](https://github.com/sher2yja/portfolio/actions/runs/36136805996) установил отдельный Helm-релиз `do14` в `do14-production`; все пять Pod стали готовы, `/healthz` ответил `{"status":"ok"}`, staging остался доступен. Production использует отдельные Secret и PVC. Его дамп, ключ и реальные Helm values сохранены с контрольными суммами, восстановлены в `do14-production-restore` и дали 142 таблицы, тот же ключ и SHA образа, все пять Pod `Running` и ответ `/healthz`. Тестовый namespace после проверки масштабирован до нуля, PVC и Secret сохранены.
 
 ## 7. Что не проверено
 
-- фактический запуск `.github/workflows/do14-n8n.yml` из GitHub и автоматический деплой;
 - VPS, публичный DNS, TLS и внешние webhook-вызовы;
-- реальное production-окружение;
 - отказ worker или Redis под нагрузкой и реакция алертов;
-- развёртывание из свежего **публичного Git-клона** (публичный коммит и push ещё не сделаны); создание новой VM из локальной папки портфолио проверено.
+- полное развёртывание из свежего **публичного Git-клона**: новая VM из локальной папки портфолио и автоматический деплой из GitHub проверены по отдельности, единый прогон с нуля — нет.
 
 Команды диагностики и подробная хронология экспериментов приведены в [docs/runbook.md](docs/runbook.md). В опубликованные файлы не включены `.env`, дампы, `.vagrant/`, приватные ключи и kubeconfig.
