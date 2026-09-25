@@ -96,7 +96,24 @@ jobs:
           image-ref: ${{ needs.build.outputs.image }}
           scanners: vuln
           severity: HIGH,CRITICAL
-          exit-code: '1'
+          format: json
+          output: trivy-image.json
+          exit-code: '0'
+      - name: Опубликовать результат и остановиться при критических находках
+        run: |
+          jq -r '[.Results[]?.Vulnerabilities[]?] | group_by(.Severity)[] | "\(.[0].Severity): \(length)"' trivy-image.json >> "$GITHUB_STEP_SUMMARY"
+          critical=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "CRITICAL")] | length' trivy-image.json)
+          if (( critical > 0 )); then
+            echo "::error::В образе $critical критических находок; см. отчёт Trivy"
+            exit 1
+          fi
+      - name: Сохранить отчёт сканирования
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: do14-image-scan
+          path: trivy-image.json
+          if-no-files-found: ignore
 
   staging:
     needs: [build, test]

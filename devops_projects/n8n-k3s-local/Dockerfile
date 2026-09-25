@@ -1,6 +1,10 @@
 ARG N8N_VERSION=2.40.6
 FROM docker.io/n8nio/n8n:${N8N_VERSION}
 
+USER root
+RUN apk upgrade --no-cache
+USER node
+
 LABEL org.opencontainers.image.title="DO14 n8n"
 LABEL org.opencontainers.image.description="Pinned n8n with a dependency-free diagnostics command"
 
