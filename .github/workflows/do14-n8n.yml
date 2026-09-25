@@ -40,6 +40,10 @@ jobs:
         run: echo "image=${IMAGE,,}:$GITHUB_SHA" >> "$GITHUB_OUTPUT"
       - name: Собрать образ
         run: docker build -t "${{ steps.meta.outputs.image }}" "$PROJECT"
+      - name: Проверить n8n и отсутствие SSH-клиента
+        run: |
+          docker run --rm --entrypoint n8n "${{ steps.meta.outputs.image }}" --version
+          docker run --rm --entrypoint sh "${{ steps.meta.outputs.image }}" -c 'test ! -e /usr/bin/ssh && test ! -e /usr/bin/scp && test ! -e /usr/bin/sftp'
       - name: Опубликовать образ в GHCR
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -102,7 +106,9 @@ jobs:
       - name: Опубликовать результат и остановиться при критических находках
         run: |
           jq -r '[.Results[]?.Vulnerabilities[]?] | group_by(.Severity)[] | "\(.[0].Severity): \(length)"' trivy-image.json >> "$GITHUB_STEP_SUMMARY"
-          critical=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "CRITICAL")] | length' trivy-image.json)
+          accepted=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "CRITICAL" and .VulnerabilityID == "CVE-2026-60002" and (.PkgName | startswith("openssh")))] | length' trivy-image.json)
+          critical=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "CRITICAL" and ((.VulnerabilityID == "CVE-2026-60002" and (.PkgName | startswith("openssh"))) | not))] | length' trivy-image.json)
+          echo "Принятое исключение CVE-2026-60002 (OpenSSH-клиент удалён): $accepted" >> "$GITHUB_STEP_SUMMARY"
           if (( critical > 0 )); then
             echo "::error::В образе $critical критических находок; см. отчёт Trivy"
             exit 1
