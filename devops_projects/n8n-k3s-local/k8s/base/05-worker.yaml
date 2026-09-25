@@ -1,0 +1,62 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: n8n-worker
+  namespace: do14
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: n8n-worker
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: n8n-worker
+    spec:
+      containers:
+        - name: n8n
+          image: docker.n8n.io/n8nio/n8n:2.40.6
+          args: ["worker", "--concurrency=5"]
+          envFrom:
+            - configMapRef:
+                name: n8n-config
+          env:
+            - name: DB_POSTGRESDB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: n8n-secrets
+                  key: POSTGRES_PASSWORD
+            - name: N8N_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: n8n-secrets
+                  key: N8N_ENCRYPTION_KEY
+            - name: N8N_RUNNERS_AUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: n8n-secrets
+                  key: N8N_RUNNERS_AUTH_TOKEN
+          resources:
+            requests:
+              cpu: 100m
+              memory: 384Mi
+            limits:
+              memory: 1Gi
+        - name: task-runner
+          image: n8nio/runners:2.40.6
+          env:
+            - name: N8N_RUNNERS_TASK_BROKER_URI
+              value: http://localhost:5679
+            - name: N8N_RUNNERS_AUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: n8n-secrets
+                  key: N8N_RUNNERS_AUTH_TOKEN
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              memory: 512Mi

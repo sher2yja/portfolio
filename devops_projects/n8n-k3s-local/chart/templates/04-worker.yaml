@@ -1,0 +1,61 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-worker
+spec:
+  replicas: {{ .Values.n8n.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: worker
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/00-config.yaml") . | sha256sum }}
+      labels:
+        app.kubernetes.io/instance: {{ .Release.Name }}
+        app.kubernetes.io/component: worker
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: n8n
+          image: {{ printf "%s:%s" .Values.n8n.image (default .Values.n8n.version .Values.n8n.imageTag) | quote }}
+          args: ["worker", "--concurrency=5"]
+          envFrom:
+            - configMapRef:
+                name: {{ .Release.Name }}-config
+          env:
+            - name: DB_POSTGRESDB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.existingSecret }}
+                  key: POSTGRES_PASSWORD
+            - name: N8N_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.existingSecret }}
+                  key: N8N_ENCRYPTION_KEY
+            - name: N8N_RUNNERS_AUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.existingSecret }}
+                  key: N8N_RUNNERS_AUTH_TOKEN
+          resources:
+            {{- toYaml .Values.n8n.resources | nindent 12 }}
+        - name: task-runner
+          image: {{ printf "%s:%s" .Values.n8n.runnersImage .Values.n8n.version | quote }}
+          env:
+            - name: N8N_RUNNERS_TASK_BROKER_URI
+              value: http://localhost:5679
+            - name: N8N_RUNNERS_AUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.existingSecret }}
+                  key: N8N_RUNNERS_AUTH_TOKEN
+          resources:
+            {{- toYaml .Values.runner.resources | nindent 12 }}

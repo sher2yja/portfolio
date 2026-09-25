@@ -1,0 +1,6 @@
+apiVersion: v2
+name: do14-n8n
+description: n8n в режиме очередей с PostgreSQL и Redis
+type: application
+version: 0.1.0
+appVersion: "2.40.6"

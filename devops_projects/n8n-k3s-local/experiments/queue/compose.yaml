@@ -1,0 +1,88 @@
+name: do14-queue
+x-n8n-env: &n8n-env
+  DB_TYPE: postgresdb
+  DB_POSTGRESDB_HOST: postgres
+  DB_POSTGRESDB_DATABASE: n8n
+  DB_POSTGRESDB_USER: n8n
+  DB_POSTGRESDB_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+  EXECUTIONS_MODE: queue
+  QUEUE_BULL_REDIS_HOST: redis
+  N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:?set N8N_ENCRYPTION_KEY}
+  N8N_RUNNERS_MODE: external
+  N8N_RUNNERS_AUTH_TOKEN: ${N8N_RUNNERS_AUTH_TOKEN:?set N8N_RUNNERS_AUTH_TOKEN}
+  N8N_RUNNERS_BROKER_LISTEN_ADDRESS: 0.0.0.0
+  OFFLOAD_MANUAL_EXECUTIONS_TO_WORKERS: "true"
+  N8N_DEFAULT_BINARY_DATA_MODE: database
+  N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS: "true"
+  N8N_DIAGNOSTICS_ENABLED: "false"
+services:
+  postgres:
+    image: postgres:17.6-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: n8n
+      POSTGRES_USER: n8n
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U n8n -d n8n"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+  redis:
+    image: redis:7.4.5-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+  main:
+    image: docker.n8n.io/n8nio/n8n:${N8N_VERSION:?set N8N_VERSION}
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5678:5678"
+    environment:
+      <<: *n8n-env
+      N8N_DISABLE_PRODUCTION_MAIN_PROCESS: "true"
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+    volumes:
+      - n8n_data:/home/node/.n8n
+  webhook:
+    image: docker.n8n.io/n8nio/n8n:${N8N_VERSION:?set N8N_VERSION}
+    restart: unless-stopped
+    command: webhook
+    ports:
+      - "127.0.0.1:5679:5678"
+    environment:
+      <<: *n8n-env
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+  worker:
+    image: docker.n8n.io/n8nio/n8n:${N8N_VERSION:?set N8N_VERSION}
+    restart: unless-stopped
+    command: ["worker", "--concurrency=5"]
+    environment:
+      <<: *n8n-env
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+  worker-runner:
+    image: n8nio/runners:${N8N_VERSION:?set N8N_VERSION}
+    restart: unless-stopped
+    environment:
+      N8N_RUNNERS_TASK_BROKER_URI: http://worker:5679
+      N8N_RUNNERS_AUTH_TOKEN: ${N8N_RUNNERS_AUTH_TOKEN:?set N8N_RUNNERS_AUTH_TOKEN}
+    depends_on:
+      - worker
+volumes:
+  postgres_data:
+  redis_data:
+  n8n_data:

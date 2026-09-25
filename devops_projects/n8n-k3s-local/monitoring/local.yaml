@@ -1,0 +1,142 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: do14-monitoring
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: do14-monitoring
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+    scrape_configs:
+      - job_name: n8n-main
+        static_configs:
+          - targets: [do14-main.do14-helm.svc.cluster.local:5678]
+      - job_name: n8n-webhook
+        static_configs:
+          - targets: [do14-webhook.do14-helm.svc.cluster.local:5678]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus
+  namespace: do14-monitoring
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: do14-prometheus}
+  template:
+    metadata:
+      labels: {app: do14-prometheus}
+    spec:
+      containers:
+        - name: prometheus
+          image: prom/prometheus:v3.5.0
+          args:
+            - --config.file=/etc/prometheus/prometheus.yml
+            - --storage.tsdb.retention.time=2d
+          ports:
+            - containerPort: 9090
+          resources:
+            requests: {cpu: 50m, memory: 128Mi}
+            limits: {memory: 384Mi}
+          volumeMounts:
+            - {name: config, mountPath: /etc/prometheus}
+            - {name: data, mountPath: /prometheus}
+      volumes:
+        - name: config
+          configMap: {name: prometheus-config}
+        - name: data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus
+  namespace: do14-monitoring
+spec:
+  selector: {app: do14-prometheus}
+  ports:
+    - {port: 9090, targetPort: 9090}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-provisioning
+  namespace: do14-monitoring
+data:
+  datasource.yaml: |
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        type: prometheus
+        access: proxy
+        url: http://prometheus.do14-monitoring.svc.cluster.local:9090
+        isDefault: true
+  dashboards.yaml: |
+    apiVersion: 1
+    providers:
+      - name: DO14
+        type: file
+        options:
+          path: /var/lib/grafana/dashboards
+  queue.json: |
+    {
+      "title": "DO14 — n8n queue",
+      "uid": "do14-queue",
+      "schemaVersion": 41,
+      "version": 1,
+      "refresh": "15s",
+      "time": {"from": "now-1h", "to": "now"},
+      "panels": [
+        {"id": 1, "type": "timeseries", "title": "Waiting and active jobs", "gridPos": {"x": 0, "y": 0, "w": 12, "h": 8}, "targets": [{"expr": "n8n_scaling_mode_queue_jobs_waiting", "legendFormat": "waiting"}, {"expr": "n8n_scaling_mode_queue_jobs_active", "legendFormat": "active"}]},
+        {"id": 2, "type": "timeseries", "title": "Completed and failed jobs", "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8}, "targets": [{"expr": "rate(n8n_scaling_mode_queue_jobs_completed[5m])", "legendFormat": "completed/s"}, {"expr": "rate(n8n_scaling_mode_queue_jobs_failed[5m])", "legendFormat": "failed/s"}]}
+      ]
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+  namespace: do14-monitoring
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: do14-grafana}
+  template:
+    metadata:
+      labels: {app: do14-grafana}
+    spec:
+      containers:
+        - name: grafana
+          image: grafana/grafana:12.1.1
+          env:
+            - {name: GF_AUTH_ANONYMOUS_ENABLED, value: "true"}
+            - {name: GF_AUTH_ANONYMOUS_ORG_ROLE, value: Viewer}
+            - {name: GF_AUTH_DISABLE_LOGIN_FORM, value: "true"}
+          ports:
+            - containerPort: 3000
+          resources:
+            requests: {cpu: 50m, memory: 128Mi}
+            limits: {memory: 384Mi}
+          volumeMounts:
+            - {name: provisioning, mountPath: /etc/grafana/provisioning/datasources/datasource.yaml, subPath: datasource.yaml}
+            - {name: provisioning, mountPath: /etc/grafana/provisioning/dashboards/dashboards.yaml, subPath: dashboards.yaml}
+            - {name: provisioning, mountPath: /var/lib/grafana/dashboards/queue.json, subPath: queue.json}
+      volumes:
+        - name: provisioning
+          configMap: {name: grafana-provisioning}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+  namespace: do14-monitoring
+spec:
+  selector: {app: do14-grafana}
+  ports:
+    - {port: 3000, targetPort: 3000}

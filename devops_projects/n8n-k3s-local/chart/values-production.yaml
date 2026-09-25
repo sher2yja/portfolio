@@ -1,0 +1,8 @@
+n8n:
+  executionHistoryHours: "168"
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      memory: 2Gi

@@ -1,0 +1,70 @@
+---
+- name: Подготовить локальный узел k3s
+  hosts: all
+  become: true
+  vars:
+    k3s_version: v1.35.8+k3s1
+  tasks:
+    - name: Установить пакеты для загрузки k3s
+      ansible.builtin.apt:
+        name:
+          - ca-certificates
+          - curl
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Создать каталог конфигурации k3s
+      ansible.builtin.file:
+        path: /etc/rancher/k3s
+        state: directory
+        mode: '0755'
+
+    - name: Отключить штатный Traefik
+      ansible.builtin.copy:
+        dest: /etc/rancher/k3s/config.yaml
+        content: |
+          disable:
+            - traefik
+        owner: root
+        group: root
+        mode: '0644'
+      notify: Перезапустить k3s
+
+    - name: Проверить установленную версию k3s
+      ansible.builtin.command: /usr/local/bin/k3s --version
+      register: installed_k3s
+      failed_when: false
+      changed_when: false
+
+    - name: Скачать официальный установщик k3s
+      ansible.builtin.get_url:
+        url: https://get.k3s.io
+        dest: /usr/local/sbin/install-k3s.sh
+        owner: root
+        group: root
+        mode: '0755'
+      when: k3s_version not in installed_k3s.stdout
+
+    - name: Установить зафиксированную версию k3s
+      ansible.builtin.command: /usr/local/sbin/install-k3s.sh
+      environment:
+        INSTALL_K3S_VERSION: "{{ k3s_version }}"
+      when: k3s_version not in installed_k3s.stdout
+
+    - name: Убедиться, что k3s запущен
+      ansible.builtin.systemd_service:
+        name: k3s
+        enabled: true
+        state: started
+
+    - name: Дождаться kubeconfig
+      ansible.builtin.wait_for:
+        path: /etc/rancher/k3s/k3s.yaml
+        timeout: 180
+
+  handlers:
+    - name: Перезапустить k3s
+      ansible.builtin.systemd_service:
+        name: k3s
+        state: restarted
+      when: installed_k3s.rc == 0

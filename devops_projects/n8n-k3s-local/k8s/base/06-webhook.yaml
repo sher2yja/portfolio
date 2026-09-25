@@ -1,0 +1,67 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: n8n-webhook
+  namespace: do14
+spec:
+  selector:
+    app: n8n-webhook
+  ports:
+    - name: http
+      port: 5678
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: n8n-webhook
+  namespace: do14
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: n8n-webhook
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: n8n-webhook
+    spec:
+      containers:
+        - name: n8n
+          image: docker.n8n.io/n8nio/n8n:2.40.6
+          args: ["webhook"]
+          ports:
+            - name: http
+              containerPort: 5678
+          envFrom:
+            - configMapRef:
+                name: n8n-config
+          env:
+            - name: DB_POSTGRESDB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: n8n-secrets
+                  key: POSTGRES_PASSWORD
+            - name: N8N_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: n8n-secrets
+                  key: N8N_ENCRYPTION_KEY
+            - name: N8N_RUNNERS_AUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: n8n-secrets
+                  key: N8N_RUNNERS_AUTH_TOKEN
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 1Gi

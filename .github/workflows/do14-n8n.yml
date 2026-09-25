@@ -1,0 +1,102 @@
+name: do14-n8n
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'devops_projects/n8n-k3s-local/**'
+      - '.github/workflows/do14-n8n.yml'
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'Куда развёртывать'
+        required: true
+        type: choice
+        options: [staging, production]
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  PROJECT: devops_projects/n8n-k3s-local
+  IMAGE: ghcr.io/${{ github.repository_owner }}/do14-n8n
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image: ${{ steps.meta.outputs.image }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Вычислить неизменяемый тег
+        id: meta
+        run: echo "image=${IMAGE,,}:$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+      - name: Собрать образ
+        run: docker build -t "${{ steps.meta.outputs.image }}" "$PROJECT"
+      - name: Опубликовать образ в GHCR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          docker push "${{ steps.meta.outputs.image }}"
+
+  test:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.21.3
+      - name: Проверить Helm-чарт для обоих окружений
+        run: |
+          for values in staging production; do
+            helm lint "$PROJECT/chart" --set existingSecret=n8n-secrets -f "$PROJECT/chart/values-$values.yaml"
+            helm template do14 "$PROJECT/chart" --set existingSecret=n8n-secrets -f "$PROJECT/chart/values-$values.yaml" > /tmp/do14-rendered.yaml
+            test -s /tmp/do14-rendered.yaml
+          done
+
+  staging:
+    needs: [build, test]
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || inputs.target == 'staging')
+    runs-on: [self-hosted, linux, x64, do14-deploy]
+    environment: do14-staging
+    steps:
+      - uses: actions/checkout@v4
+      - name: Развернуть staging
+        env:
+          DEPLOY_IMAGE: ${{ needs.build.outputs.image }}
+        run: |
+          helm upgrade --install do14 "$PROJECT/chart" \
+            --namespace do14-helm -f "$PROJECT/chart/values-staging.yaml" \
+            --set existingSecret=n8n-secrets \
+            --set-string n8n.image="${DEPLOY_IMAGE%:*}" \
+            --set-string n8n.imageTag="${DEPLOY_IMAGE##*:}" \
+            --atomic --wait --timeout 10m
+          kubectl -n do14-helm rollout status deployment/do14-main --timeout=120s
+
+  production:
+    needs: [build, test]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && inputs.target == 'production'
+    runs-on: [self-hosted, linux, x64, do14-deploy]
+    environment: do14-production
+    steps:
+      - uses: actions/checkout@v4
+      - name: Развернуть production
+        env:
+          DEPLOY_IMAGE: ${{ needs.build.outputs.image }}
+        run: |
+          helm upgrade --install do14 "$PROJECT/chart" \
+            --namespace do14-production -f "$PROJECT/chart/values-production.yaml" \
+            --set existingSecret=n8n-secrets \
+            --set-string n8n.image="${DEPLOY_IMAGE%:*}" \
+            --set-string n8n.imageTag="${DEPLOY_IMAGE##*:}" \
+            --atomic --wait --timeout 10m
+          kubectl -n do14-production rollout status deployment/do14-main --timeout=120s
