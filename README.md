@@ -22,9 +22,7 @@
 
 ## Проекты
 
-Двадцать проектов, порядок — от сложного к базовому. Подробности разделов: [DevOps и инфраструктура](./devops_projects) · [Работа с базами данных](./sql_projects) · [Python](./python_projects). Первыми идут два собственных продукта — они в этот счёт не входят и живут отдельными репозиториями.
-
-В подготовке к оформлению на витрине: [n8n в локальном кластере k3s](./devops_projects/n8n-k3s-local) — стенд на VM с Ansible, Helm и мониторингом. GitHub Actions доставил образ в staging и production, восстановление обоих окружений проверено; единый прогон с нуля ещё не подтверждён, поэтому в счёт завершённых проектов он пока не включён.
+Двадцать один проект, порядок — от сложного к базовому. Подробности разделов: [DevOps и инфраструктура](./devops_projects) · [Работа с базами данных](./sql_projects) · [Python](./python_projects). Первыми идут два собственных продукта — они в этот счёт не входят и живут отдельными репозиториями.
 
 ### Собственные продукты
 
@@ -37,10 +35,11 @@
 
 ### Главный проект
 
-Единственный, где четыре темы сходятся в одной работе: чарт Kubernetes, конвейер, публикация артефакта в реестр и мониторинг уже развёрнутого приложения.
+Здесь сходятся чарт Kubernetes, конвейер, публикация образа в реестр и мониторинг уже развёрнутого приложения.
 
 | Проект | О чём | Технологии |
 |---|---|---|
+| [n8n в локальном кластере k3s](./devops_projects/n8n-k3s-local) | Две локальные VM: Ansible готовит k3s, GitHub Actions через отдельный runner доставляет три роли n8n в staging и production. Проверены восстановление credentials и установка из свежего публичного клона | ![Ansible](https://img.shields.io/badge/Ansible-EE0000?style=flat-square&logo=ansible&logoColor=white) ![k3s](https://img.shields.io/badge/k3s-FFC61C?style=flat-square&logo=k3s&logoColor=black) ![Helm](https://img.shields.io/badge/Helm-0F1689?style=flat-square&logo=helm&logoColor=white) ![GitHub Actions](https://img.shields.io/badge/GitHub%20Actions-2088FF?style=flat-square&logo=github-actions&logoColor=white) |
 | [Непрерывная доставка чартом Helm](./devops_projects/helm-cd-pipeline) | Чарт Helm, конвейер GitHub Actions с одноразовым кластером k3d прямо в раннере, публикация артефакта в реестр и проверка именно выложенного | ![GitHub Actions](https://img.shields.io/badge/GitHub%20Actions-2088FF?style=flat-square&logo=github-actions&logoColor=white) ![Helm](https://img.shields.io/badge/Helm-0F1689?style=flat-square&logo=helm&logoColor=white) ![Kubernetes](https://img.shields.io/badge/Kubernetes-326CE5?style=flat-square&logo=kubernetes&logoColor=white) ![Prometheus](https://img.shields.io/badge/Prometheus-E6522C?style=flat-square&logo=prometheus&logoColor=white) |
 
 ### Kubernetes и оркестрация

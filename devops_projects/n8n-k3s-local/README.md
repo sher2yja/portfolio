@@ -40,4 +40,4 @@ Vagrant → Ubuntu VM → Ansible → k3s
 
 ### 📈 Итоговый результат
 
-На локальной VM проверены повторный Ansible-прогон без изменений, работа трёх ролей n8n, Helm upgrade и rollback, сбор метрик, автоматический staging и ручной production через GitHub Actions. Staging сохранил credential после обновления (`{"credential_ok":1}`); production-дамп и ключ восстановлены в отдельном namespace с тем же образом. Подробные факты и команды — в [отчёте](main_report.md).
+На локальной VM проверены повторный Ansible-прогон без изменений, работа трёх ролей n8n, Helm upgrade и rollback, сбор метрик, автоматический staging и ручной production через GitHub Actions. Staging сохранил credential после обновления (`{"credential_ok":1}`); production-дамп и ключ восстановлены в отдельном namespace с тем же образом. Из свежего публичного клона создана отдельная VM, где Helm установил готовый стенд в пустой namespace. Подробные факты и команды — в [отчёте](main_report.md).

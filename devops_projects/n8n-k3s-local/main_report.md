@@ -8,6 +8,8 @@
 
 `Vagrantfile` создаёт Ubuntu 24.04 с 4 vCPU и 6 ГБ RAM для двух окружений. `ansible/site.yml` устанавливает k3s `v1.35.8+k3s1` и отключает встроенный Traefik. Повторный `vagrant provision`, запущенный из этой папки портфолио на существующей VM, завершился с `changed=0` (7 задач `ok`, 2 пропущены). Затем из этой же папки создана **новая** VM: Ansible выполнил 9 задач без ошибок, узел k3s перешёл в `Ready`. Начальная конфигурация была 2 vCPU/4 ГБ; после добавления production лимиты увеличены без замены диска VM.
 
+Отдельно проверен путь **из свежего публичного Git-клона** коммита `5c99ee6`: новая VM получила 4 vCPU/6 ГБ, Ansible завершился с `failed=0`, `bash scripts/init-local-env.sh` создал одноразовый Secret, `bash scripts/deploy-local-helm.sh` установил ревизию 1 в пустой namespace. Все пять Pod стали готовы, `/healthz` ответил `{"status":"ok"}`. Повторный Ansible-прогон дал `changed=0`. Тестовая VM удалена, одноразовый клон перемещён в корзину, исходная VM запущена снова; staging и production после запуска ответили `{"status":"ok"}`. Это проверяет публичные инструкции на чистой машине, но не повторяет регистрацию runner без GitHub-токена.
+
 ```bash
 bash scripts/init-local-env.sh
 vagrant up --provider=libvirt
@@ -75,7 +77,7 @@ bash scripts/restore-local.sh backups/production-copy do14-production-restore
 
 Создана отдельная Ubuntu VM `do14-runner` (2 vCPU, 2 ГБ RAM), без Vagrant shared folder. GitHub API показывает runner `online` с label `do14-deploy`. Внутри VM `kubectl auth can-i` вернул `yes` для Deployment в `do14-helm` и `do14-production`, `no` для Secrets в `kube-system` и создания Namespace.
 
-Реальный workflow [do14-n8n](../../.github/workflows/do14-n8n.yml) на коммите `7066ec56` собрал образ из базового `docker.io/n8nio/n8n:2.40.6`, опубликовал его в GHCR и проверил чарт. Первый staging-job упал, потому что ограниченной роли не хватало чтения ReplicaSet; рабочая ревизия 10 восстановлена, затем добавлены только `get/list/watch` для ReplicaSet в обоих namespace. Повторный staging-job [завершился успешно](https://github.com/sher2yja/portfolio/actions/runs/36134534960), все пять Pod стали `Running`, три роли n8n перешли на `ghcr.io/sher2yja/do14-n8n:7066ec56f9dcf0cbeb84fa78e4494341b12cf1d3`. После деплоя `/healthz` вернул `{"status":"ok"}`, а тестовый workflow с сохранённым доступом — `{"credential_ok":1}`. Кластер скачал пакет GHCR без pull-secret; ручная смена видимости не потребовалась.
+Реальный workflow [do14-n8n](../../.github/workflows/do14-n8n.yml) на коммите `7066ec56` собрал образ из базового `docker.io/n8nio/n8n:2.40.6`, опубликовал его в GHCR и проверил чарт. Первый staging-job упал, потому что ограниченной роли не хватало чтения ReplicaSet; рабочая ревизия 10 восстановлена, затем добавлены только `get/list/watch` для ReplicaSet в обоих namespace. Повторный staging-job [завершился успешно](https://github.com/sher2yja/portfolio/actions/runs/36134534960), все пять Pod стали `Running`, три роли n8n перешли на `ghcr.io/sher2yja/do14-n8n:7066ec56f9dcf0cbeb84fa78e4494341b12cf1d3`. После деплоя `/healthz` вернул `{"status":"ok"}`, а тестовый workflow с сохранённым доступом — `{"credential_ok":1}`. Кластер скачал пакет GHCR без pull-secret; ручная смена видимости не потребовалась. Следующий [push-run `5c99ee6`](https://github.com/sher2yja/portfolio/actions/runs/36137915042) также прошёл build, test и автоматический staging; все пять Pod обновились и оба окружения ответили `{"status":"ok"}`.
 
 Первый production-job был отменён из-за `Insufficient memory`: VM расширена с 4 до 6 ГБ RAM и с 2 до 4 vCPU. После остановки старого тестового namespace нагрузка стабилизировалась. Повторный [production workflow](https://github.com/sher2yja/portfolio/actions/runs/36136805996) установил отдельный Helm-релиз `do14` в `do14-production`; все пять Pod стали готовы, `/healthz` ответил `{"status":"ok"}`, staging остался доступен. Production использует отдельные Secret и PVC. Его дамп, ключ и реальные Helm values сохранены с контрольными суммами, восстановлены в `do14-production-restore` и дали 142 таблицы, тот же ключ и SHA образа, все пять Pod `Running` и ответ `/healthz`. Тестовый namespace после проверки масштабирован до нуля, PVC и Secret сохранены.
 
@@ -83,6 +85,6 @@ bash scripts/restore-local.sh backups/production-copy do14-production-restore
 
 - VPS, публичный DNS, TLS и внешние webhook-вызовы;
 - отказ worker или Redis под нагрузкой и реакция алертов;
-- полное развёртывание из свежего **публичного Git-клона**: новая VM из локальной папки портфолио и автоматический деплой из GitHub проверены по отдельности, единый прогон с нуля — нет.
+- автоматическая регистрация новой runner-VM без ручного GitHub-токена: такая автоматизация намеренно не добавлена, чтобы не хранить токен в открытом репозитории.
 
 Команды диагностики и подробная хронология экспериментов приведены в [docs/runbook.md](docs/runbook.md). В опубликованные файлы не включены `.env`, дампы, `.vagrant/`, приватные ключи и kubeconfig.

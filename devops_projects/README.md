@@ -1,14 +1,10 @@
 # DevOps и инфраструктура
 
-Тринадцать проектов траектории DevOps: от установки серверной Ubuntu в консоли до Helm-релиза в кластере Kubernetes. Каждый — отдельная папка с README, подробным отчётом и работающими конфигурациями.
+Четырнадцать проектов траектории DevOps: от установки серверной Ubuntu в консоли до Helm-релиза в кластере Kubernetes. Каждый — отдельная папка с README, подробным отчётом и работающими конфигурациями.
 
 Порядок в таблицах — от сложного к базовому, а не хронологический.
 
 ---
-
-## В подготовке
-
-[n8n в локальном кластере k3s](./n8n-k3s-local) — VM с Ansible, три роли n8n, Helm, Prometheus и Grafana. GitHub Actions доставил образ в staging и production, восстановление обоих окружений проверено; единый прогон с нуля ещё не подтверждён, поэтому проект пока не включён в счёт тринадцати завершённых.
 
 ## Собственные продукты
 
@@ -21,10 +17,11 @@
 
 ## Главный проект
 
-Единственный, где четыре темы сходятся в одной работе: чарт Kubernetes, конвейер, публикация артефакта в реестр и мониторинг уже развёрнутого приложения.
+Здесь сходятся чарт Kubernetes, конвейер, публикация образа в реестр и мониторинг уже развёрнутого приложения.
 
 | Проект | О чём | Технологии |
 |---|---|---|
+| [n8n в локальном кластере k3s](./n8n-k3s-local) | Две локальные VM: Ansible готовит k3s, GitHub Actions через отдельный runner доставляет три роли n8n в staging и production. Проверены восстановление credentials и установка из свежего публичного клона | ![Ansible](https://img.shields.io/badge/Ansible-EE0000?style=flat-square&logo=ansible&logoColor=white) ![k3s](https://img.shields.io/badge/k3s-FFC61C?style=flat-square&logo=k3s&logoColor=black) ![Helm](https://img.shields.io/badge/Helm-0F1689?style=flat-square&logo=helm&logoColor=white) ![GitHub Actions](https://img.shields.io/badge/GitHub%20Actions-2088FF?style=flat-square&logo=github-actions&logoColor=white) |
 | [Непрерывная доставка чартом Helm](./helm-cd-pipeline) | Приложение доставляется чартом через GitHub Actions. Конвейер поднимает одноразовый кластер k3d прямо в раннере, ставит туда собранный артефакт и гоняет тесты по живому; релиз публикуется в реестр и проверяется уже оттуда | ![GitHub Actions](https://img.shields.io/badge/GitHub%20Actions-2088FF?style=flat-square&logo=github-actions&logoColor=white) ![Helm](https://img.shields.io/badge/Helm-0F1689?style=flat-square&logo=helm&logoColor=white) ![k3d](https://img.shields.io/badge/k3d-FFC61C?style=flat-square&logo=k3s&logoColor=black) ![Prometheus](https://img.shields.io/badge/Prometheus-E6522C?style=flat-square&logo=prometheus&logoColor=white) |
 
 ## Kubernetes и оркестрация
