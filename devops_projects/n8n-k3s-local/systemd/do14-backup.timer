@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily DO14 production backup
+
+[Timer]
+OnCalendar=*-*-* 03:00:00
+Persistent=true
+Unit=do14-backup.service
+
+[Install]
+WantedBy=timers.target

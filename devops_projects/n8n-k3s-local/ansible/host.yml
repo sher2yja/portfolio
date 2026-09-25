@@ -50,7 +50,9 @@
         state: link
       loop:
         - do14-backup.service
+        - do14-backup.timer
         - do14-backup-verify.service
+        - do14-backup-verify.timer
       notify: Обновить пользовательский systemd
 
     - name: Создать каталоги для путей текущего checkout
