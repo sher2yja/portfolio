@@ -70,6 +70,7 @@ pids+=("$!")
 bash ci/deploy.sh staging
 urls=()
 for role in main webhook; do
+  : > "$temporary/$role.log"
   kubectl -n "$KUBE_NAMESPACE" port-forward --address=127.0.0.1 "service/$HELM_RELEASE-$role" :5678 > "$temporary/$role.log" 2>&1 &
   pids+=("$!")
   port=''

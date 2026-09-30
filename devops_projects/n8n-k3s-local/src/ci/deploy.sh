@@ -53,13 +53,14 @@ if [[ "$release" != do14 ]]; then
 fi
 helm upgrade --install "$release" chart -n "$namespace" -f "chart/values-$1.yaml" "${args[@]}" --atomic --wait --timeout "${HELM_TIMEOUT:-10m}"
 for role in main webhook; do
-  kubectl -n "$namespace" port-forward --address=127.0.0.1 "service/$release-$role" :5678 > "$temporary/forward.log" 2>&1 &
+  : > "$temporary/$role.log"
+  kubectl -n "$namespace" port-forward --address=127.0.0.1 "service/$release-$role" :5678 > "$temporary/$role.log" 2>&1 &
   forward_pid=$!
   port=''
   for _ in {1..60}; do
-    port="$(sed -n 's/^Forwarding from 127.0.0.1:\([0-9]*\) ->.*/\1/p' "$temporary/forward.log" | head -1)"
+    port="$(sed -n 's/^Forwarding from 127.0.0.1:\([0-9]*\) ->.*/\1/p' "$temporary/$role.log" | head -1)"
     [[ -z "$port" ]] || break
-    kill -0 "$forward_pid" 2>/dev/null || { cat "$temporary/forward.log" >&2; exit 1; }
+    kill -0 "$forward_pid" 2>/dev/null || { cat "$temporary/$role.log" >&2; exit 1; }
     sleep 1
   done
   test -n "$port"
