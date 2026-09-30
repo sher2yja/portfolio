@@ -134,6 +134,8 @@ jobs:
   test:
     needs: [build, validate]
     runs-on: [self-hosted, linux, x64, do14-deploy]
+    env:
+      TEST_RELEASE: do14-test-${{ github.run_id }}-${{ github.run_attempt }}
     permissions:
       contents: read
       packages: read
@@ -144,12 +146,16 @@ jobs:
           node-version: '22.23.3'
       - run: npm install --global newman@6.2.1
       - name: Test isolated candidate in portfolio cluster
+        id: candidate
         env:
           REGISTRY: ${{ needs.build.outputs.registry }}
           IMAGE_TAG: ${{ needs.build.outputs.tag }}
           REGISTRY_USER: ${{ github.actor }}
           REGISTRY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
         run: bash "$PROJECT/ci/test-candidate.sh"
+      - name: Finish candidate cleanup after cancellation or failure
+        if: ${{ always() && steps.candidate.outcome != 'skipped' }}
+        run: bash "$PROJECT/ci/test-candidate.sh" --cleanup-only
       - uses: actions/upload-artifact@v4
         if: always()
         with:

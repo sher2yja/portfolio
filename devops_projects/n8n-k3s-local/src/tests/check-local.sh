@@ -25,6 +25,11 @@ for environment in ('staging', 'production', 'candidate'):
     assert sum(x['spec']['replicas'] for x in workloads)==5
     worker=next(x for x in workloads if x['metadata']['name']=='do14-worker')
     assert len(worker['spec']['template']['spec']['containers'])==2
+    memory_requests=[c.get('resources',{}).get('requests',{}).get('memory','0Mi')
+                     for x in workloads for c in x['spec']['template']['spec']['containers']]
+    assert all(value.endswith('Mi') for value in memory_requests)
+    # Three concurrent releases must leave 1 GiB of a 4 GiB VM for k3s/system Pods.
+    assert 3*sum(int(value[:-2]) for value in memory_requests)<=3072
     services={x['metadata']['name']:x for x in objects if x['kind']=='Service'}
     for role,offset in [('main',0),('webhook',1)]:
         service=services[f'do14-{role}']['spec']
@@ -40,4 +45,6 @@ PY
 if bash ci/deploy.sh invalid >/dev/null 2>&1; then exit 1; fi
 if env -u REGISTRY -u IMAGE_TAG bash ci/build.sh >/dev/null 2>&1; then exit 1; fi
 if HELM_RELEASE=do14 WEBHOOK_BASE_URL=http://127.0.0.1:1 bash ci/test.sh http://127.0.0.1:1 >/dev/null 2>&1; then exit 1; fi
+if env -u TEST_RELEASE bash ci/test-candidate.sh --cleanup-only >/dev/null 2>&1; then exit 1; fi
+if TEST_RELEASE=do14 bash ci/test-candidate.sh --cleanup-only >/dev/null 2>&1; then exit 1; fi
 echo 'Local checks passed'

@@ -63,6 +63,7 @@ kubectl get pods -n do14-helm
 
 ```ini
 [wsl2]
+memory=6GB
 networkingMode=mirrored
 [experimental]
 ignoredPorts=67
@@ -115,6 +116,14 @@ bash ci/deploy.sh production
 Повторный deploy отказывается заменять существующие ключ шифрования, пароль БД и runner auth token. При переносе действующего `do14` сначала сохраните его текущие значения; имена StatefulSet и PVC сохранены. Не удаляйте release и PVC для обновления.
 
 `test-candidate.sh` создаёт уникальный `do14-test-*` внутри `do14-helm`, отдельные PVC и одноразовые секреты. Доступ идёт через localhost port-forward; owner создаётся на свежей БД, workflow импортируется и публикуется, процессы перезапускаются, Newman проверяет health/readiness и функциональный webhook с уникальным входом и Code-узлом. После успеха и ошибки сохраняются журналы в `artifacts/`, затем удаляются только собственные ресурсы кандидата. `test.sh <main_base_url>` используется этой обёрткой с `WEBHOOK_BASE_URL` и `HELM_RELEASE`.
+
+Чтобы два постоянных окружения и кандидат помещались в VM на 4 GiB, n8n использует request 256 MiB; лимиты сохранены: staging/candidate 1 GiB, production 2 GiB. Чартовые проверки контролируют суммарные requests трёх релизов. Диски VM используют `cache=none`, чтобы уменьшить двойное кеширование в гостевой ОС и WSL.
+
+CI задаёт уникальное `TEST_RELEASE=do14-test-<run-id>-<attempt>`. При принудительной отмене job runner может завершить процессы до окончания trap, поэтому GitHub дополнительно вызывает общий скрипт с `--cleanup-only` в шаге `always()`. Аналогичную очистку следует вызвать в GitLab `after_script`, сохраняя тот же TEST_RELEASE. Повторная очистка не требует Registry credentials; namespace фиксирован, имя do14 отклоняется:
+
+```bash
+TEST_RELEASE=do14-test-123-1 bash ci/test-candidate.sh --cleanup-only
+```
 
 ## 4. CI и передача
 

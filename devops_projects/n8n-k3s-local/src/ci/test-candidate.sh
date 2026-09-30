@@ -2,13 +2,23 @@
 set -euo pipefail
 set +x
 cd "$(dirname "$0")/.."
-: "${REGISTRY:?REGISTRY is required}"
-: "${IMAGE_TAG:?IMAGE_TAG is required}"
-for tool in kubectl helm node newman curl openssl; do command -v "$tool" >/dev/null; done
+mode="${1:-run}"
+[[ "$mode" == run || "$mode" == --cleanup-only ]] || { echo 'Unknown candidate mode' >&2; exit 1; }
+if [[ "$mode" == --cleanup-only ]]; then
+  : "${TEST_RELEASE:?TEST_RELEASE is required for cleanup}"
+else
+  : "${REGISTRY:?REGISTRY is required}"
+  : "${IMAGE_TAG:?IMAGE_TAG is required}"
+fi
+for tool in kubectl helm; do command -v "$tool" >/dev/null; done
+if [[ "$mode" == run ]]; then
+  for tool in node newman curl openssl; do command -v "$tool" >/dev/null; done
+fi
 export KUBE_NAMESPACE=do14-helm
+HELM_RELEASE="${TEST_RELEASE:-do14-test-$(date +%s)-$$}"
+[[ "$HELM_RELEASE" =~ ^do14-test-[a-z0-9]+(-[a-z0-9]+)*$ && ${#HELM_RELEASE} -le 53 ]] || { echo 'Invalid disposable release name' >&2; exit 1; }
 umask 077
 temporary="$(mktemp -d)"
-HELM_RELEASE="do14-test-$(date +%s)-$$"
 export HELM_RELEASE
 artifacts="${ARTIFACT_DIR:-$PWD/artifacts/$HELM_RELEASE}"
 mkdir -p "$artifacts"
@@ -40,6 +50,14 @@ cleanup() {
 trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
+if [[ "$mode" == --cleanup-only ]]; then cleanup; fi
+# A run must never replace a live candidate belonging to another invocation.
+if helm status "$HELM_RELEASE" -n "$KUBE_NAMESPACE" >/dev/null 2>&1; then
+  trap - EXIT
+  rm -rf -- "$temporary"
+  echo 'Candidate already exists; refusing to replace it' >&2
+  exit 1
+fi
 N8N_ENCRYPTION_KEY="$(openssl rand -hex 32)"
 N8N_RUNNERS_AUTH_TOKEN="$(openssl rand -hex 32)"
 POSTGRES_PASSWORD="$(openssl rand -hex 32)"
