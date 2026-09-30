@@ -1,0 +1,14 @@
+Actual state after cancellation of run 36737076659:
+Candidate do14-test-36737076659-1: Pods=0 PVC=0 Secrets=0
+do14-helm do14-main-649866db7f-vgkmz Ready 1/1
+do14-helm do14-postgres-0 Ready 1/1
+do14-helm do14-redis-0 Ready 1/1
+do14-helm do14-webhook-575d8f4ff7-pnslq Ready 1/1
+do14-helm do14-worker-6cb6d767d8-lng2k Ready 2/2
+do14-production do14-main-79c4f5bfc-h4t8m Ready 1/1
+do14-production do14-postgres-0 Ready 1/1
+do14-production do14-redis-0 Ready 1/1
+do14-production do14-webhook-58c48445d9-ndm4c Ready 1/1
+do14-production do14-worker-558fc5c95d-vxfgn Ready 2/2
+SQL marker: 1|preserved
+Staging PostgreSQL PVC UID: fefc54a0-c0f4-43ce-995f-4677deb5c4a8

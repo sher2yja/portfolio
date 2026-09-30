@@ -1,0 +1,5 @@
+Excerpt of actual cancelled GitHub job 109962537170; full log in run 36737076659.
+test	Test isolated candidate in portfolio cluster	2026-09-30T15:33:44.6925826Z ##[error]The operation was canceled.
+test	Finish candidate cleanup after cancellation or failure	2026-09-30T15:33:50.3643001Z release "do14-test-36737076659-1" uninstalled
+test	Finish candidate cleanup after cancellation or failure	2026-09-30T15:33:54.5346658Z persistentvolumeclaim "data-do14-test-36737076659-1-postgres-0" deleted from do14-helm namespace
+test	Finish candidate cleanup after cancellation or failure	2026-09-30T15:33:54.5544941Z persistentvolumeclaim "data-do14-test-36737076659-1-redis-0" deleted from do14-helm namespace

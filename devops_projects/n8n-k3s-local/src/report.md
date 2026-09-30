@@ -86,13 +86,23 @@ Request n8n установлен в 256 MiB в общем values; переопр
 
 30.09.2026 [прогон 36731183090](https://github.com/sher2yja/portfolio/actions/runs/36731183090) на SHA `9e727ac817770bcd42d2d202cf22cb82f2dd8f38` завершился success: build четырёх образов, четыре validate и test на `do14-runner-wsl`. Кандидат `do14-test-36731183090-1` прошёл fresh-owner, import, publish, restart и Newman: пять запросов, десять assertions, ноль failures. [Метаданные GitHub](evidence/2026-09-30/github-run-36731183090.json), [JUnit](evidence/2026-09-30/github-newman-36731183090.xml), [выдержка фактического job log](evidence/2026-09-30/github-test-36731183090-excerpt.log).
 
-Обычная очистка и повторный шаг always() завершились успешно. После них Pod/PVC/Secret кандидата отсутствовали; оба постоянных релиза имели по пять Ready Pod, worker — 2/2. UID PostgreSQL PVC staging `fefc54a0-c0f4-43ce-995f-4677deb5c4a8` и SQL-маркер `1|preserved` сохранились. [Снимок состояния после CI](evidence/2026-09-30/github-post-test-36731183090.log). В этом снимке нет проверки NodePort; результаты прежней проверки доступны отдельно в restart-checks.log. Отмена задания с новым шагом always() ещё не проверена: подтверждены обычный успешный путь и ранее выполненная ручная очистка после отмены.
+Обычная очистка и повторный шаг always() завершились успешно. После них Pod/PVC/Secret кандидата отсутствовали; оба постоянных релиза имели по пять Ready Pod, worker — 2/2. UID PostgreSQL PVC staging `fefc54a0-c0f4-43ce-995f-4677deb5c4a8` и SQL-маркер `1|preserved` сохранились. [Снимок состояния после CI](evidence/2026-09-30/github-post-test-36731183090.log). В этом снимке нет проверки NodePort; результаты прежней проверки доступны отдельно в restart-checks.log. Отмена задания с новым шагом always() дополнительно проверена отдельным прогоном, описанным ниже.
 
 В этом прогоне реально использовались VM 4096/1024 MiB и disk cache=none. Свободная RAM Windows во время работы колебалась примерно от 0,6 до 1,8 GiB; в госте приложения при CLI-настройке отмечено 19 MiB swap. Оба гостя и WSL после проверки остановлены; Windows показал 8,28 GiB свободной RAM. Уменьшенная конфигурация проходит этот smoke-тест, но нагрузочный тест и постоянная фоновая работа вместе с браузерами не подтверждены.
 
 ![Успешный GitHub build/validate/test](evidence/2026-09-30/github-run-36731183090.jpg)
 
 Рисунок 6. Реальный скриншот страницы GitHub Actions, прогон 36731183090. Build, четыре validate и test успешны. Staging/production пропущены по условию ветки: этот прогон выполнялся на n8n-src-handoff. Полный цикл с автоматическим staging и отдельным ручным production остаётся открытым.
+
+### Очистка при отмене GitHub job
+
+30.09.2026 выполнен отдельный [прогон 36737076659](https://github.com/sher2yja/portfolio/actions/runs/36737076659) на SHA `c06a7f6ecfdc111f79a6117b7d4d23f998f0c744`. После успешных build/validate и создания пяти Pod, двух PVC и двух Secret кандидата `do14-test-36737076659-1` отправлена отмена через `gh run cancel 36737076659 --repo sher2yja/portfolio`. Основной шаг завершился cancelled; шаг `Finish candidate cleanup after cancellation or failure` и загрузка artifacts — success. Overall cancelled здесь является ожидаемым результатом намеренной отмены, а не успешным функциональным тестом.
+
+Проверены нулевые количества Pod/PVC/Secret кандидата после завершения job. Оба постоянных окружения сохранили пять Ready Pod, worker 2/2; UID PostgreSQL PVC staging и SQL-маркер `1|preserved` не изменились. [Ресурсы до отмены](evidence/2026-09-30/github-cancel-36737076659-before.log), [проверенное состояние после отмены](evidence/2026-09-30/github-cancel-36737076659-after.log), [метаданные GitHub](evidence/2026-09-30/github-run-36737076659.json), [выдержка job log](evidence/2026-09-30/github-cancel-36737076659-excerpt.log). VM и WSL после проверки выключены.
+
+![Шаг очистки после намеренной отмены](evidence/2026-09-30/github-cancel-36737076659.jpg)
+
+Рисунок 7. Реальный скриншот GitHub job 109962537170: основной шаг отменён, последующий cleanup завершился успешно. Его результат дополнительно подтверждён Kubernetes-проверкой отсутствия конкретных Pod/PVC/Secret кандидата.
 
 ## С9–С10. Документация и доказательства
 
