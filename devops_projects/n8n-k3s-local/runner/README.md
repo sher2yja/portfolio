@@ -17,7 +17,7 @@ vagrant ssh -c 'sudo systemctl status actions.runner.sher2yja-portfolio.do14-run
 vagrant halt
 ```
 
-Держите сеанс WSL открытым во время работы VM. Эти команды относятся к подготовленной копии вне OneDrive. GitHub environments do14-staging/do14-production получили существующие значения приложения и PULL_USER; PULL_TOKEN ожидает отдельный classic PAT read:packages. Новый удалённый workflow ещё не запускался.
+Держите сеанс WSL открытым во время работы VM. Эти команды относятся к подготовленной копии вне OneDrive. GitHub environments do14-staging/do14-production получили существующие значения приложения, PULL_USER и проверенный classic PAT read:packages в PULL_TOKEN. Новый удалённый workflow прошёл build и четыре validate; test ждёт запуска runner VM. Исходный Vagrantfile теперь задаёт 1 GiB для runner; уменьшенная память ещё не применена и требует интеграционной проверки вместе с app VM на 4 GiB.
 
 На хосте с 16 ГБ RAM одновременно включённые app VM (6 GiB) и runner VM (2 GiB) оставили Windows около 1,9 ГБ свободной памяти. После проверок обе VM штатно остановлены и выполнен `wsl --shutdown`; свободная память выросла до 7,9 ГБ. Запускайте стенд только на время интеграционной проверки/CI. Пока runner VM остановлена, GitHub показывает runner offline; это ожидаемо.
 
