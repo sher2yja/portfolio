@@ -92,7 +92,7 @@ Request n8n установлен в 256 MiB в общем values; переопр
 
 ![Успешный GitHub build/validate/test](evidence/2026-09-30/github-run-36731183090.jpg)
 
-Рисунок 6. Реальный скриншот страницы GitHub Actions, прогон 36731183090. Build, четыре validate и test успешны. Staging/production пропущены по условию ветки: этот прогон выполнялся на n8n-src-handoff. Полный цикл с автоматическим staging и отдельным ручным production остаётся открытым.
+Рисунок 6. Реальный скриншот страницы GitHub Actions, прогон 36731183090. Build, четыре validate и test успешны. Staging/production пропущены по условию ветки: этот прогон выполнялся на n8n-src-handoff. На тот момент полный цикл с автоматическим staging и отдельным ручным production оставался открытым; последующие результаты приведены ниже.
 
 ### Очистка при отмене GitHub job
 
@@ -104,6 +104,24 @@ Request n8n установлен в 256 MiB в общем values; переопр
 
 Рисунок 7. Реальный скриншот GitHub job 109962537170: основной шаг отменён, последующий cleanup завершился успешно. Его результат дополнительно подтверждён Kubernetes-проверкой отсутствия конкретных Pod/PVC/Secret кандидата.
 
+### Слияние и полный GitHub цикл
+
+После подтверждения пользователя [PR №1](https://github.com/sher2yja/portfolio/pull/1) слит в main, merge SHA `779f97dab66af518d0e93503a00972f09987bbad`. Первый [прогон 36738923271](https://github.com/sher2yja/portfolio/actions/runs/36738923271) остановился до staging: общий deploy.sh прочитал из переиспользуемого журнала port-forward уже закрытый порт предыдущей HTTP-роли. Кандидат был Ready; ошибка curl вернула код 7, очистка прошла. [Метаданные первого main run](evidence/2026-09-30/github-run-36738923271.json), [фактическая ошибка](evidence/2026-09-30/github-port-forward-failure-36738923271.log). Исправление `2e31d6f` использует отдельный журнал каждой роли и создаёт его до запуска фонового процесса; подготовка журнала добавлена и в test-candidate.sh. ShellCheck, node:test и локальные Helm/invariant-проверки прошли.
+
+Автоматический [прогон 36740012926](https://github.com/sher2yja/portfolio/actions/runs/36740012926) на SHA `2e31d6f8356591c1bbc50e0cd25c309998b28516` завершил build → четыре validate → test → staging успешно. Production в push-прогоне пропущен по условию workflow. Затем вручную выполнено `gh workflow run do14-n8n.yml --repo sher2yja/portfolio --ref main -f target=production`; отдельный [прогон 36741456740](https://github.com/sher2yja/portfolio/actions/runs/36741456740) на том же SHA завершил build → validate → test → staging → production успешно. В обоих Newman-отчётах по пять запросов и десять assertions без ошибок. [Метаданные automatic staging](evidence/2026-09-30/github-run-36740012926.json), [его JUnit](evidence/2026-09-30/github-newman-36740012926.xml), [журнал](evidence/2026-09-30/github-cycle-36740012926-excerpt.log); [метаданные manual production](evidence/2026-09-30/github-run-36741456740.json), [его JUnit](evidence/2026-09-30/github-newman-36741456740.xml), [журнал](evidence/2026-09-30/github-cycle-36741456740-excerpt.log).
+
+После обоих деплоев проверены пять Ready Pod в каждом окружении, worker 2/2 и одинаковый полный тег четырёх образов. Все три существующих значения приложения в каждом Secret побайтно совпали с приватным исходным снимком; значения не опубликованы. UID PostgreSQL PVC staging `fefc54a0-c0f4-43ce-995f-4677deb5c4a8`, production `e9229cc8-4fc6-4bd7-b41e-29d7c7e07ba2` и SQL-маркер staging `1|preserved` сохранились. Оба кандидата не оставили Pod/PVC/Secret, на runner нет kubectl port-forward. Все четыре NodePort вернули HTTP 200 и status ok. [Фактическая итоговая проверка кластера](evidence/2026-09-30/github-full-cycle-cluster.log).
+
+Проверенные команды: `kubectl -n do14-helm get pods -l app.kubernetes.io/instance=do14`, та же команда для do14-production; чтение Deployment images и UID PVC; `kubectl -n do14-helm exec do14-postgres-0 -- psql -U n8n -d n8n -Atc 'TABLE do14_verification'`; curl --fail к `/healthz/readiness` на 30678/30679/31678/31679. VM и WSL выключены после проверок.
+
+![Автоматический GitHub staging](evidence/2026-09-30/github-staging-36740012926.jpg)
+
+Рисунок 8. Реальная страница автоматического push-прогона: build, четыре validate, test и staging успешны; production пропущен.
+
+![Ручной GitHub production](evidence/2026-09-30/github-production-36741456740.jpg)
+
+Рисунок 9. Реальная страница отдельного workflow_dispatch-прогона: build, validate, test, staging и production успешны на том же проверенном SHA.
+
 ## С9–С10. Документация и доказательства
 
 Инструкции: README.md и runner/NOTES.md. Финальный GitLab pipeline, CI variables и школьные скриншоты — часть Максима.
@@ -114,8 +132,7 @@ Request n8n установлен в 256 MiB в общем values; переопр
 
 ## Открытые условия передачи
 
-- Подтвердить новый GitHub build → test → staging и ручной production.
 - Выполнить С1 и зафиксировать совместимую версию GitLab Runner chart.
 - Максим должен воспроизвести build/test/оба deploy на Ubuntu 22.04 без правок.
 
-Статус: локальная реализация проверена; передача не закрыта, С1 открыта. Полный новый GitHub цикл и воспроизведение Максимом на Ubuntu 22.04 ещё не подтверждены.
+Статус: локальная часть и полный GitHub цикл проверены; передача не закрыта, С1 открыта. Воспроизведение Максимом на Ubuntu 22.04 и школьный GitLab остаются внешними условиями передачи.

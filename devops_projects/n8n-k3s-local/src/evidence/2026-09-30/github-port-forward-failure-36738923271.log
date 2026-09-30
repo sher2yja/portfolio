@@ -1,0 +1,9 @@
+Excerpt of actual first main run; disposable candidate was ready but deploy HTTP check failed before staging.
+test	Test isolated candidate in portfolio cluster	2026-09-30T15:48:39.4057334Z STATUS: deployed
+test	Test isolated candidate in portfolio cluster	2026-09-30T15:48:40.7625497Z curl: (7) Failed to connect to 127.0.0.1 port 35155 after 0 ms: Couldn't connect to server
+test	Test isolated candidate in portfolio cluster	2026-09-30T15:48:43.2746058Z {"status":"ok"}release "do14-test-36738923271-1" uninstalled
+test	Test isolated candidate in portfolio cluster	2026-09-30T15:48:56.8576829Z persistentvolumeclaim "data-do14-test-36738923271-1-postgres-0" deleted from do14-helm namespace
+test	Test isolated candidate in portfolio cluster	2026-09-30T15:48:56.8859844Z persistentvolumeclaim "data-do14-test-36738923271-1-redis-0" deleted from do14-helm namespace
+test	Test isolated candidate in portfolio cluster	2026-09-30T15:48:58.3957653Z secret "do14-test-36738923271-1-secrets" deleted from do14-helm namespace
+test	Test isolated candidate in portfolio cluster	2026-09-30T15:48:58.4067003Z secret "do14-test-36738923271-1-registry" deleted from do14-helm namespace
+test	Test isolated candidate in portfolio cluster	2026-09-30T15:48:58.4359629Z ##[error]Process completed with exit code 7.

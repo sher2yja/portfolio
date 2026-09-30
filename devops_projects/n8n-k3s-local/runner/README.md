@@ -17,11 +17,11 @@ vagrant ssh -c 'sudo systemctl status actions.runner.sher2yja-portfolio.do14-run
 vagrant halt
 ```
 
-Держите сеанс WSL открытым во время работы VM. Эти команды относятся к подготовленной копии вне OneDrive. GitHub environments do14-staging/do14-production получили существующие значения приложения, PULL_USER и проверенный classic PAT read:packages в PULL_TOKEN. Новый удалённый workflow прошёл build, четыре validate и test. Память 1 GiB для runner и 4 GiB для приложения применена к существующим VM и проверена этим прогоном. Автоматический staging и ручной production через GitHub ещё не подтверждены.
+Держите сеанс WSL открытым во время работы VM. Эти команды относятся к подготовленной копии вне OneDrive. GitHub environments do14-staging/do14-production получили существующие значения приложения, PULL_USER и проверенный classic PAT read:packages в PULL_TOKEN. Новый удалённый workflow прошёл build, четыре validate и test. Память 1 GiB для runner и 4 GiB для приложения применена к существующим VM и проверена этим прогоном. Полный автоматический цикл со staging подтверждён прогоном [36740012926](https://github.com/sher2yja/portfolio/actions/runs/36740012926), отдельный ручной production — [36741456740](https://github.com/sher2yja/portfolio/actions/runs/36741456740). Оба используют проверенный тег `2e31d6f8356591c1bbc50e0cd25c309998b28516`.
 
 На хосте с 16 ГБ RAM одновременно включённые app VM (6 GiB) и runner VM (2 GiB) оставили Windows около 1,9 ГБ свободной памяти. После проверок обе VM штатно остановлены и выполнен `wsl --shutdown`; свободная память выросла до 7,9 ГБ. Запускайте стенд только на время интеграционной проверки/CI. Пока runner VM остановлена, GitHub показывает runner offline; это ожидаемо.
 
-Повторный GitHub-прогон [36731183090](https://github.com/sher2yja/portfolio/actions/runs/36731183090) прошёл build/validate/test при памяти приложения 4 GiB и нового runner 1 GiB. Newman выполнил 10 assertions без ошибок, оба шага очистки успешны. Во время работы свободная RAM Windows падала до 0,6 GiB; после остановки обеих VM и WSL выросла до 8,28 GiB. Runner сейчас выключен после проверки; полный автоматический staging и ручной production ещё предстоят.
+Повторный GitHub-прогон [36731183090](https://github.com/sher2yja/portfolio/actions/runs/36731183090) прошёл build/validate/test при памяти приложения 4 GiB и нового runner 1 GiB. Newman выполнил 10 assertions без ошибок, оба шага очистки успешны. Во время работы свободная RAM Windows падала до 0,6 GiB; после остановки обеих VM и WSL выросла до 8,28 GiB. После последующего успешного полного staging и отдельного ручного production обе VM и WSL выключены; свободная RAM Windows составила 6,69 GiB. Runner offline до следующего запуска VM.
 
 ## Историческая runner-VM
 

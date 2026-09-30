@@ -1,0 +1,18 @@
+Excerpt of actual completed GitHub run 36741456740.
+test	Test isolated candidate in portfolio cluster	2026-09-30T16:08:17.2696373Z STATUS: deployed
+test	Test isolated candidate in portfolio cluster	2026-09-30T16:08:17.2697513Z REVISION: 1
+test	Test isolated candidate in portfolio cluster	2026-09-30T16:08:22.6520219Z {"status":"ok"}{"status":"ok"}TAP version 13
+test	Test isolated candidate in portfolio cluster	2026-09-30T16:08:38.9958990Z Successfully imported 1 workflow.
+test	Test isolated candidate in portfolio cluster	2026-09-30T16:08:47.2684642Z Publishing workflow with ID: DO14SmokeWorkflow (current version)
+test	Test isolated candidate in portfolio cluster	2026-09-30T16:08:47.3702993Z Please restart n8n for changes to take effect if n8n is currently running.
+test	Test isolated candidate in portfolio cluster	2026-09-30T16:09:37.1268210Z │              assertions │                10 │                 0 │
+test	Test isolated candidate in portfolio cluster	2026-09-30T16:09:40.5253574Z release "do14-test-36741456740-1" uninstalled
+test	Finish candidate cleanup after cancellation or failure	2026-09-30T16:09:58.4204703Z release "do14-test-36741456740-1" uninstalled
+staging	Deploy tested SHA to portfolio staging	2026-09-30T16:10:25.9520956Z NAME: do14
+staging	Deploy tested SHA to portfolio staging	2026-09-30T16:10:25.9525758Z STATUS: deployed
+staging	Deploy tested SHA to portfolio staging	2026-09-30T16:10:25.9526369Z REVISION: 8
+staging	Deploy tested SHA to portfolio staging	2026-09-30T16:10:28.1910969Z {"status":"ok"}{"status":"ok"}
+production	Deploy tested SHA to portfolio production	2026-09-30T16:11:56.2050427Z NAME: do14
+production	Deploy tested SHA to portfolio production	2026-09-30T16:11:56.2075008Z STATUS: deployed
+production	Deploy tested SHA to portfolio production	2026-09-30T16:11:56.2075578Z REVISION: 4
+production	Deploy tested SHA to portfolio production	2026-09-30T16:11:58.4878537Z {"status":"ok"}{"status":"ok"}

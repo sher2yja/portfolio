@@ -1,0 +1,32 @@
+Actual post-deployment checks for tested SHA 2e31d6f8356591c1bbc50e0cd25c309998b28516.
+Runner: no kubectl port-forward processes remain
+do14-helm do14-main-7b7d94db-ph2lh Ready 1/1
+do14-helm do14-postgres-0 Ready 1/1
+do14-helm do14-redis-0 Ready 1/1
+do14-helm do14-webhook-5476fd7f66-247c6 Ready 1/1
+do14-helm do14-worker-6cccbc6989-j6gvh Ready 2/2
+do14-helm main ghcr.io/sher2yja/do14-n8n/main:2e31d6f8356591c1bbc50e0cd25c309998b28516
+do14-helm webhook ghcr.io/sher2yja/do14-n8n/webhook:2e31d6f8356591c1bbc50e0cd25c309998b28516
+do14-helm worker ghcr.io/sher2yja/do14-n8n/worker:2e31d6f8356591c1bbc50e0cd25c309998b28516
+do14-helm runner ghcr.io/sher2yja/do14-n8n/runner:2e31d6f8356591c1bbc50e0cd25c309998b28516
+do14-helm three existing application secrets unchanged
+do14-helm PostgreSQL PVC UID preserved: fefc54a0-c0f4-43ce-995f-4677deb5c4a8
+do14-production do14-main-6c9c65798-qmkhb Ready 1/1
+do14-production do14-postgres-0 Ready 1/1
+do14-production do14-redis-0 Ready 1/1
+do14-production do14-webhook-7b86c998b8-47zfn Ready 1/1
+do14-production do14-worker-6bc486dbdf-gvgmr Ready 2/2
+do14-production main ghcr.io/sher2yja/do14-n8n/main:2e31d6f8356591c1bbc50e0cd25c309998b28516
+do14-production webhook ghcr.io/sher2yja/do14-n8n/webhook:2e31d6f8356591c1bbc50e0cd25c309998b28516
+do14-production worker ghcr.io/sher2yja/do14-n8n/worker:2e31d6f8356591c1bbc50e0cd25c309998b28516
+do14-production runner ghcr.io/sher2yja/do14-n8n/runner:2e31d6f8356591c1bbc50e0cd25c309998b28516
+do14-production three existing application secrets unchanged
+do14-production PostgreSQL PVC UID preserved: e9229cc8-4fc6-4bd7-b41e-29d7c7e07ba2
+Staging SQL marker: 1|preserved
+do14-test-36740012926-1 Pods=0 PVC=0 Secrets=0
+do14-test-36741456740-1 Pods=0 PVC=0 Secrets=0
+http://192.168.121.254:30678/healthz/readiness {"status":"ok"}
+http://192.168.121.254:30679/healthz/readiness {"status":"ok"}
+http://192.168.121.254:31678/healthz/readiness {"status":"ok"}
+http://192.168.121.254:31679/healthz/readiness {"status":"ok"}
+Verified both permanent releases use the tested SHA; data, credentials and NodePorts preserved.
