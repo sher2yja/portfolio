@@ -1,0 +1,8 @@
+*.sh text eol=lf
+*.mjs text eol=lf
+Dockerfile text eol=lf
+Vagrantfile text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+# Keep original command-output spacing in evidence artifacts.
+src/evidence/** whitespace=-trailing-space,-blank-at-eof

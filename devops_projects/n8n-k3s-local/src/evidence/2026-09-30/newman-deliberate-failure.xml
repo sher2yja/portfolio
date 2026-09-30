@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="DO14 candidate checks" tests="5" time="15.855">
+  <testsuite name="main healthz" id="c05e2d8b-bf94-4ec7-85a7-9ac49babe689" timestamp="2026-09-30T12:40:32.790Z" tests="2" failures="0" errors="0" time="0.184">
+    <testcase name="HTTP 200" time="0.184" classname="MainHealthz"/>
+    <testcase name="ready" time="0.184" classname="MainHealthz"/>
+  </testsuite>
+  <testsuite name="main healthz/readiness" id="6f717b6e-ac4a-4925-825d-fc2e9900c623" timestamp="2026-09-30T12:40:32.790Z" tests="2" failures="0" errors="0" time="0.014">
+    <testcase name="HTTP 200" time="0.014" classname="MainHealthzReadiness"/>
+    <testcase name="ready" time="0.014" classname="MainHealthzReadiness"/>
+  </testsuite>
+  <testsuite name="webhook healthz" id="2a009d31-fafb-4177-8bc5-bd3965cd122b" timestamp="2026-09-30T12:40:32.790Z" tests="2" failures="0" errors="0" time="0.077">
+    <testcase name="HTTP 200" time="0.077" classname="WebhookHealthz"/>
+    <testcase name="ready" time="0.077" classname="WebhookHealthz"/>
+  </testsuite>
+  <testsuite name="webhook healthz/readiness" id="f1e14eb9-8336-4066-ac4f-44f2c0acbecf" timestamp="2026-09-30T12:40:32.790Z" tests="2" failures="0" errors="0" time="0.044">
+    <testcase name="HTTP 200" time="0.044" classname="WebhookHealthzReadiness"/>
+    <testcase name="ready" time="0.044" classname="WebhookHealthzReadiness"/>
+  </testsuite>
+  <testsuite name="webhook executes Code node through queue" id="fa726b9f-96a7-45fa-878e-6a0da07b2f6b" timestamp="2026-09-30T12:40:32.790Z" tests="3" failures="1" errors="0" time="15.536">
+    <testcase name="HTTP 200" time="15.536" classname="WebhookExecutesCodeNodeThroughQueue"/>
+    <testcase name="Code node echoes this request" time="15.536" classname="WebhookExecutesCodeNodeThroughQueue"/>
+    <testcase name="deliberate failure for cleanup verification" time="15.536" classname="WebhookExecutesCodeNodeThroughQueue">
+      <failure type="AssertionFailure" message="expected false to deeply equal true">
+        <![CDATA[Failed 1 times.]]>
+        <![CDATA[Collection JSON ID: 37be871b-ba93-474d-aba4-b337a9343faa.]]>
+        <![CDATA[Collection name: DO14 candidate checks.]]>
+        <![CDATA[Request name: webhook executes Code node through queue.]]>
+        <![CDATA[Test description: deliberate failure for cleanup verification.]]>
+        <![CDATA[Error message: expected false to deeply equal true.]]>
+        <![CDATA[Stacktrace: AssertionError: expected false to deeply equal true
+   at Object.eval sandbox-script.js:3:5).]]>
+      </failure>
+    </testcase>
+  </testsuite>
+</testsuites>

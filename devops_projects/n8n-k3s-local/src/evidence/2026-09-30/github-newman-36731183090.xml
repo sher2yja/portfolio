@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="DO14 candidate checks" tests="5" time="54.966">
+  <testsuite name="main healthz" id="07e372d1-f338-4e96-8b78-f0db95e39254" timestamp="2026-09-30T15:14:18.803Z" tests="2" failures="0" errors="0" time="0.216">
+    <testcase name="HTTP 200" time="0.216" classname="MainHealthz"/>
+    <testcase name="ready" time="0.216" classname="MainHealthz"/>
+  </testsuite>
+  <testsuite name="main healthz/readiness" id="b3f8c721-2829-4131-b658-a26ac0f3d721" timestamp="2026-09-30T15:14:18.803Z" tests="2" failures="0" errors="0" time="0.068">
+    <testcase name="HTTP 200" time="0.068" classname="MainHealthzReadiness"/>
+    <testcase name="ready" time="0.068" classname="MainHealthzReadiness"/>
+  </testsuite>
+  <testsuite name="webhook healthz" id="e68cc8b8-88ab-44c0-b1d4-1a02e7144532" timestamp="2026-09-30T15:14:18.803Z" tests="2" failures="0" errors="0" time="0.099">
+    <testcase name="HTTP 200" time="0.099" classname="WebhookHealthz"/>
+    <testcase name="ready" time="0.099" classname="WebhookHealthz"/>
+  </testsuite>
+  <testsuite name="webhook healthz/readiness" id="f85abfbd-d214-4c0f-a3c6-e9df99f45112" timestamp="2026-09-30T15:14:18.803Z" tests="2" failures="0" errors="0" time="0.027">
+    <testcase name="HTTP 200" time="0.027" classname="WebhookHealthzReadiness"/>
+    <testcase name="ready" time="0.027" classname="WebhookHealthzReadiness"/>
+  </testsuite>
+  <testsuite name="webhook executes Code node through queue" id="4f11101a-8754-4c6b-9395-fb820b0532f6" timestamp="2026-09-30T15:14:18.803Z" tests="2" failures="0" errors="0" time="54.556">
+    <testcase name="HTTP 200" time="54.556" classname="WebhookExecutesCodeNodeThroughQueue"/>
+    <testcase name="Code node echoes this request" time="54.556" classname="WebhookExecutesCodeNodeThroughQueue"/>
+  </testsuite>
+</testsuites>

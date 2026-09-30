@@ -1,0 +1,27 @@
+Actual post-CI state: permanent staging/production Pods; staging PVC and Secret names; SQL marker; disposable resources. NodePort checks are not included in this snapshot.
+NAME                            READY   STATUS    RESTARTS      AGE
+do14-main-649866db7f-vgkmz      1/1     Running   2 (14m ago)   44m
+do14-postgres-0                 1/1     Running   5 (16m ago)   171m
+do14-redis-0                    1/1     Running   5 (16m ago)   171m
+do14-webhook-575d8f4ff7-pnslq   1/1     Running   2 (14m ago)   44m
+do14-worker-6cb6d767d8-lng2k    2/2     Running   4 (14m ago)   44m
+NAME                            READY   STATUS    RESTARTS      AGE
+do14-main-79c4f5bfc-h4t8m       1/1     Running   2 (14m ago)   43m
+do14-postgres-0                 1/1     Running   5 (16m ago)   168m
+do14-redis-0                    1/1     Running   5 (16m ago)   168m
+do14-webhook-58c48445d9-ndm4c   1/1     Running   2 (14m ago)   43m
+do14-worker-558fc5c95d-vxfgn    2/2     Running   4 (14m ago)   43m
+NAME                   STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS   VOLUMEATTRIBUTESCLASS   AGE
+data-do14-postgres-0   Bound    pvc-fefc54a0-c0f4-43ce-995f-4677deb5c4a8   8Gi        RWO            local-path     <unset>                 171m
+data-do14-redis-0      Bound    pvc-2285c25b-b65e-4725-b71f-b12451ba2671   1Gi        RWO            local-path     <unset>                 171m
+secret/do14-deployer-token
+secret/do14-registry
+secret/n8n-secrets
+secret/sh.helm.release.v1.do14.v1
+secret/sh.helm.release.v1.do14.v2
+secret/sh.helm.release.v1.do14.v3
+secret/sh.helm.release.v1.do14.v4
+secret/sh.helm.release.v1.do14.v5
+secret/sh.helm.release.v1.do14.v6
+1|preserved
+No resources found in do14-helm namespace.

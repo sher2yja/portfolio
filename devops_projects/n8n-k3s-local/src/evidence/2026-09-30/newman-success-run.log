@@ -1,0 +1,113 @@
+[fog][WARNING] Unrecognized arguments: libvirt_ip_command
+NAME       STATUS   ROLES           AGE   VERSION
+do14-k3s   Ready    control-plane   23m   v1.35.8+k3s1
+namespace/gitlab-runner unchanged
+namespace/do14-helm unchanged
+namespace/do14-production unchanged
+serviceaccount/do14-ci-job unchanged
+role.rbac.authorization.k8s.io/do14-ci-job unchanged
+rolebinding.rbac.authorization.k8s.io/do14-ci-job unchanged
+role.rbac.authorization.k8s.io/do14-ci-job unchanged
+rolebinding.rbac.authorization.k8s.io/do14-ci-job unchanged
+RBAC ['create', 'pods/exec', '-n', 'do14-helm'] : yes
+RBAC ['get', 'pods/portforward', '-n', 'do14-production'] : yes
+RBAC ['get', 'pods/log', '-n', 'do14-helm'] : yes
+RBAC ['get', 'secrets', '-n', 'kube-system'] : no
+RBAC ['create', 'namespaces'] : no
+Release "do14-test-1790772131-48835" does not exist. Installing it now.
+NAME: do14-test-1790772131-48835
+LAST DEPLOYED: Wed Sep 30 15:42:15 2026
+NAMESPACE: do14-helm
+STATUS: deployed
+REVISION: 1
+TEST SUITE: None
+{"status":"ok"}{"status":"ok"}TAP version 13
+# Subtest: diagnostics returns 0 for HTTP 200 and fails for HTTP 503
+ok 1 - diagnostics returns 0 for HTTP 200 and fails for HTTP 503
+  ---
+  duration_ms: 446.15546
+  type: 'test'
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 1
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 864.800821
+Acquiring database migration lock...
+Importing 1 workflows...
+Successfully imported 1 workflow.
+Acquiring database migration lock...
+Publishing workflow with ID: DO14SmokeWorkflow (current version)
+Note: Changes will not take effect if n8n is running.
+Please restart n8n for changes to take effect if n8n is currently running.
+deployment.apps/do14-test-1790772131-48835-main restarted
+deployment.apps/do14-test-1790772131-48835-webhook restarted
+deployment.apps/do14-test-1790772131-48835-worker restarted
+Waiting for deployment "do14-test-1790772131-48835-main" rollout to finish: 0 out of 1 new replicas have been updated...
+Waiting for deployment "do14-test-1790772131-48835-main" rollout to finish: 0 out of 1 new replicas have been updated...
+Waiting for deployment "do14-test-1790772131-48835-main" rollout to finish: 0 out of 1 new replicas have been updated...
+Waiting for deployment "do14-test-1790772131-48835-main" rollout to finish: 0 of 1 updated replicas are available...
+deployment "do14-test-1790772131-48835-main" successfully rolled out
+deployment "do14-test-1790772131-48835-webhook" successfully rolled out
+deployment "do14-test-1790772131-48835-worker" successfully rolled out
+newman
+
+DO14 candidate checks
+
+→ main healthz
+  GET http://127.0.0.1:35319/healthz [200 OK, 226B, 109ms]
+  ✓  HTTP 200
+  ✓  ready
+
+→ main healthz/readiness
+  GET http://127.0.0.1:35319/healthz/readiness [200 OK, 226B, 23ms]
+  ✓  HTTP 200
+  ✓  ready
+
+→ webhook healthz
+  GET http://127.0.0.1:36371/healthz [200 OK, 226B, 97ms]
+  ✓  HTTP 200
+  ✓  ready
+
+→ webhook healthz/readiness
+  GET http://127.0.0.1:36371/healthz/readiness [200 OK, 226B, 22ms]
+  ✓  HTTP 200
+  ✓  ready
+
+→ webhook executes Code node through queue
+  POST http://127.0.0.1:36371/webhook/do14-smoke [200 OK, 1.01kB, 14.9s]
+  ✓  HTTP 200
+  ✓  Code node echoes this request
+
+┌─────────────────────────┬──────────────────┬──────────────────┐
+│                         │         executed │           failed │
+├─────────────────────────┼──────────────────┼──────────────────┤
+│              iterations │                1 │                0 │
+├─────────────────────────┼──────────────────┼──────────────────┤
+│                requests │                5 │                0 │
+├─────────────────────────┼──────────────────┼──────────────────┤
+│            test-scripts │                5 │                0 │
+├─────────────────────────┼──────────────────┼──────────────────┤
+│      prerequest-scripts │                1 │                0 │
+├─────────────────────────┼──────────────────┼──────────────────┤
+│              assertions │               10 │                0 │
+├─────────────────────────┴──────────────────┴──────────────────┤
+│ total run duration: 15.4s                                     │
+├───────────────────────────────────────────────────────────────┤
+│ total data received: 562B (approx)                            │
+├───────────────────────────────────────────────────────────────┤
+│ average response time: 3s [min: 22ms, max: 14.9s, s.d.: 5.9s] │
+└───────────────────────────────────────────────────────────────┘
+release "do14-test-1790772131-48835" uninstalled
+pod "do14-test-1790772131-48835-main-75d9654b79-h8tb7" deleted from do14-helm namespace
+pod "do14-test-1790772131-48835-postgres-0" deleted from do14-helm namespace
+pod "do14-test-1790772131-48835-webhook-5f7c75866c-4nnhn" deleted from do14-helm namespace
+pod "do14-test-1790772131-48835-worker-78f78b8c7b-sh6jr" deleted from do14-helm namespace
+persistentvolumeclaim "data-do14-test-1790772131-48835-postgres-0" deleted from do14-helm namespace
+persistentvolumeclaim "data-do14-test-1790772131-48835-redis-0" deleted from do14-helm namespace
+secret "do14-test-1790772131-48835-secrets" deleted from do14-helm namespace
+secret "do14-test-1790772131-48835-registry" deleted from do14-helm namespace

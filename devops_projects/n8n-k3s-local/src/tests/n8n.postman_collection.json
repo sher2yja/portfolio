@@ -1,0 +1,127 @@
+{
+  "info": {
+    "name": "DO14 candidate checks",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "main healthz",
+      "request": {
+        "method": "GET",
+        "url": "{{main_url}}/healthz"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+              "pm.test('ready', () => pm.expect(pm.response.json().status).to.eql('ok'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "main healthz/readiness",
+      "request": {
+        "method": "GET",
+        "url": "{{main_url}}/healthz/readiness"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+              "pm.test('ready', () => pm.expect(pm.response.json().status).to.eql('ok'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "webhook healthz",
+      "request": {
+        "method": "GET",
+        "url": "{{webhook_url}}/healthz"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+              "pm.test('ready', () => pm.expect(pm.response.json().status).to.eql('ok'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "webhook healthz/readiness",
+      "request": {
+        "method": "GET",
+        "url": "{{webhook_url}}/healthz/readiness"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+              "pm.test('ready', () => pm.expect(pm.response.json().status).to.eql('ok'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "webhook executes Code node through queue",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.variables.set('nonce', pm.variables.replaceIn('{{$guid}}'));"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+              "pm.test('Code node echoes this request', () => {",
+              "  const data = pm.response.json();",
+              "  pm.expect(data.ok).to.eql(true);",
+              "  pm.expect(data.processedBy).to.eql('worker');",
+              "  pm.expect(data.received.body.nonce).to.eql(pm.variables.get('nonce'));",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{webhook_url}}/webhook/do14-smoke",
+        "body": {
+          "mode": "raw",
+          "raw": "{\"nonce\":\"{{nonce}}\"}"
+        }
+      }
+    }
+  ]
+}

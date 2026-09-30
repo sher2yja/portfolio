@@ -4,7 +4,7 @@ set -euo pipefail
 project_dir="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$project_dir"
 
-app_ip="$(vagrant ssh-config < /dev/null | awk '$1 == "HostName" {print $2; exit}')"
+app_ip="$(cd src && vagrant ssh-config < /dev/null | awk '$1 == "HostName" {print $2; exit}')"
 test -n "$app_ip"
 
 bash scripts/vm-kubectl.sh create namespace do14-production --dry-run=client -o yaml |
@@ -33,7 +33,7 @@ for _ in 1 2 3 4 5; do
 done
 test -n "$token_b64"
 
-ca_b64="$(vagrant ssh -c 'sudo k3s kubectl config view --raw -o jsonpath="{.clusters[0].cluster.certificate-authority-data}"' < /dev/null | tr -d '\r')"
+ca_b64="$(cd src && vagrant ssh -c 'sudo k3s kubectl config view --raw -o jsonpath="{.clusters[0].cluster.certificate-authority-data}"' < /dev/null | tr -d '\r')"
 test -n "$ca_b64"
 
 temporary_kubeconfig="$(mktemp)"

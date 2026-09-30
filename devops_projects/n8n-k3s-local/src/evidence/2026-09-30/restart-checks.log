@@ -1,0 +1,16 @@
+Docker Engine: 29.1.3
+WSL Registry HTTP: 401
+NAME                           READY   STATUS    RESTARTS       AGE
+do14-main-94d4f5c8c-5wwm8      1/1     Running   2 (2m5s ago)   44m
+do14-postgres-0                1/1     Running   2 (2m5s ago)   47m
+do14-redis-0                   1/1     Running   2 (2m5s ago)   47m
+do14-webhook-fc6f89c89-vdc7f   1/1     Running   2 (2m5s ago)   44m
+do14-worker-7f47ddb976-6f4pg   2/2     Running   4 (2m5s ago)   44m
+NAME                            READY   STATUS    RESTARTS       AGE
+do14-main-b686f54c7-rvt7g       1/1     Running   2 (2m5s ago)   44m
+do14-postgres-0                 1/1     Running   2 (2m5s ago)   44m
+do14-redis-0                    1/1     Running   2 (2m5s ago)   44m
+do14-webhook-6b9f6c8b5c-47pgl   1/1     Running   2 (2m5s ago)   44m
+do14-worker-55c84c75d6-hsv28    2/2     Running   4 (2m5s ago)   44m
+preserved
+{"status":"ok"}{"status":"ok"}{"status":"ok"}{"status":"ok"}

@@ -1,0 +1,12 @@
+n8n:
+  executionHistoryHours: "168"
+  resources:
+    requests:
+      cpu: 250m
+    limits:
+      memory: 2Gi
+
+service:
+  type: NodePort
+  mainNodePort: 31678
+  webhookNodePort: 31679

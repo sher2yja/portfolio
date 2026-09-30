@@ -1,0 +1,4 @@
+apiVersion: v2
+name: do14-cluster-summary
+version: 0.1.0
+description: Optional portfolio metrics, excluded from the submission
