@@ -21,6 +21,8 @@ vagrant halt
 
 На хосте с 16 ГБ RAM одновременно включённые app VM (6 GiB) и runner VM (2 GiB) оставили Windows около 1,9 ГБ свободной памяти. После проверок обе VM штатно остановлены и выполнен `wsl --shutdown`; свободная память выросла до 7,9 ГБ. Запускайте стенд только на время интеграционной проверки/CI. Пока runner VM остановлена, GitHub показывает runner offline; это ожидаемо.
 
+Повторный GitHub-прогон [36731183090](https://github.com/sher2yja/portfolio/actions/runs/36731183090) прошёл build/validate/test при памяти приложения 4 GiB и нового runner 1 GiB. Newman выполнил 10 assertions без ошибок, оба шага очистки успешны. Во время работы свободная RAM Windows падала до 0,6 GiB; после остановки обеих VM и WSL выросла до 8,28 GiB. Runner сейчас выключен после проверки; полный автоматический staging и ручной production ещё предстоят.
+
 ## Историческая runner-VM
 
 `runner/Vagrantfile` создаёт Ubuntu VM с 2 vCPU и 2 ГБ RAM без общей папки с хостом. Runner зарегистрирован в `sher2yja/portfolio` под именем `do14-runner` и label `do14-deploy`. Он не получает Docker socket, SSH-ключ хоста или административный kubeconfig. MTU 1400 нужен для TLS к службе GitHub Actions через текущую libvirt-сеть.

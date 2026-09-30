@@ -1,0 +1,19 @@
+Excerpt of actual GitHub job 109941876598; full log is available in run 36731183090.
+test	Test isolated candidate in portfolio cluster	2026-09-30T15:09:08.6102253Z # Subtest: diagnostics returns 0 for HTTP 200 and fails for HTTP 503
+test	Test isolated candidate in portfolio cluster	2026-09-30T15:09:08.6104083Z ok 1 - diagnostics returns 0 for HTTP 200 and fails for HTTP 503
+test	Test isolated candidate in portfolio cluster	2026-09-30T15:10:50.3003392Z Successfully imported 1 workflow.
+test	Test isolated candidate in portfolio cluster	2026-09-30T15:11:31.3949295Z Publishing workflow with ID: DO14SmokeWorkflow (current version)
+test	Test isolated candidate in portfolio cluster	2026-09-30T15:11:31.4583301Z Please restart n8n for changes to take effect if n8n is currently running.
+test	Test isolated candidate in portfolio cluster	2026-09-30T15:14:19.3516190Z   ✓  HTTP 200
+test	Test isolated candidate in portfolio cluster	2026-09-30T15:14:19.5888042Z   ✓  HTTP 200
+test	Test isolated candidate in portfolio cluster	2026-09-30T15:14:19.7876907Z   ✓  HTTP 200
+test	Test isolated candidate in portfolio cluster	2026-09-30T15:14:19.8742092Z   ✓  HTTP 200
+test	Test isolated candidate in portfolio cluster	2026-09-30T15:15:14.5975933Z   ✓  HTTP 200
+test	Test isolated candidate in portfolio cluster	2026-09-30T15:15:14.5980256Z   ✓  Code node echoes this request
+test	Test isolated candidate in portfolio cluster	2026-09-30T15:15:14.8004077Z │              assertions │                 10 │                  0 │
+test	Test isolated candidate in portfolio cluster	2026-09-30T15:15:17.0797054Z release "do14-test-36731183090-1" uninstalled
+test	Test isolated candidate in portfolio cluster	2026-09-30T15:15:29.6606705Z persistentvolumeclaim "data-do14-test-36731183090-1-postgres-0" deleted from do14-helm namespace
+test	Test isolated candidate in portfolio cluster	2026-09-30T15:15:29.6674037Z persistentvolumeclaim "data-do14-test-36731183090-1-redis-0" deleted from do14-helm namespace
+test	Test isolated candidate in portfolio cluster	2026-09-30T15:15:31.6479016Z secret "do14-test-36731183090-1-secrets" deleted from do14-helm namespace
+test	Test isolated candidate in portfolio cluster	2026-09-30T15:15:31.6687640Z secret "do14-test-36731183090-1-registry" deleted from do14-helm namespace
+test	Finish candidate cleanup after cancellation or failure	2026-09-30T15:15:34.1815698Z release "do14-test-36731183090-1" uninstalled
