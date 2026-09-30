@@ -1,0 +1,40 @@
+n8n:
+  replicas: 1
+  executionHistoryHours: "168"
+  resources:
+    requests:
+      cpu: 100m
+      memory: 384Mi
+    limits:
+      memory: 1Gi
+
+existingSecret: ""
+imagePullSecrets: []
+
+postgres:
+  image: postgres:17.6-alpine
+  storage: 8Gi
+
+redis:
+  image: redis:7.4.5-alpine
+  storage: 1Gi
+
+runner:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 512Mi
+
+images:
+  tag: ""
+  main: do14/main
+  webhook: do14/webhook
+  worker: do14/worker
+  runner: do14/runner
+
+service:
+  type: ClusterIP
+  mainNodePort: 30678
+  webhookNodePort: 30679

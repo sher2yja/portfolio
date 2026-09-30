@@ -1,0 +1,8 @@
+.env
+.env.*
+!.env.example
+.vagrant/
+*kubeconfig*
+artifacts/
+*.log
+!evidence/**/*.log

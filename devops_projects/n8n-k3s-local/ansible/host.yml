@@ -37,6 +37,20 @@
       changed_when: false
       no_log: true
 
+    - name: Подключить дополнительный cluster-summary вне рабочего чарта
+      ansible.builtin.shell: |
+        set -o pipefail
+        helm template do14-summary monitoring/cluster-summary -n {{ item }} |
+          bash scripts/vm-kubectl.sh apply -f -
+      args:
+        executable: /bin/bash
+        chdir: "{{ project_dir }}"
+      loop:
+        - do14-helm
+        - do14-production
+      register: summary_apply
+      changed_when: "'created' in summary_apply.stdout or 'configured' in summary_apply.stdout"
+
     - name: Создать каталог пользовательских unit-файлов
       ansible.builtin.file:
         path: "{{ user_unit_dir }}"

@@ -1,0 +1,5 @@
+*
+!dockerfiles/
+!dockerfiles/**
+!tools/
+!tools/check-health.mjs

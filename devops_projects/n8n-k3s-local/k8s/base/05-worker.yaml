@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
         - name: n8n
-          image: docker.n8n.io/n8nio/n8n:2.40.6
+          image: docker.n8n.io/n8nio/n8n:2.40.7
           args: ["worker", "--concurrency=5"]
           envFrom:
             - configMapRef:
@@ -45,7 +45,7 @@ spec:
             limits:
               memory: 1Gi
         - name: task-runner
-          image: n8nio/runners:2.40.6
+          image: n8nio/runners:2.40.7
           env:
             - name: N8N_RUNNERS_TASK_BROKER_URI
               value: http://localhost:5679

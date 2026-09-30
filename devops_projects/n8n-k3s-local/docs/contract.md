@@ -1,16 +1,18 @@
 # Контракт приложения и платформы
 
-Контракт локального развёртывания через GitHub Actions. VPS не планируется. Build, test, автоматический staging и ручной production проверены на GitHub.
+Актуальный рабочий каталог: `src/`. Исторические результаты прежнего GitHub цикла находятся в `main_report.md`; новый цикл требует отдельного подтверждения.
 
-| Параметр | Владелец | Значение и проверка |
-|---|---|---|
-| Версия n8n | чарт | `n8n.version` задаёт версию runner и исходного n8n; собранный поверх него образ имеет тег git SHA в `n8n.imageTag` |
-| Секреты | оператор платформы | `existingSecret` существует в namespace; содержит `N8N_ENCRYPTION_KEY`, `N8N_RUNNERS_AUTH_TOKEN`, `POSTGRES_PASSWORD`; чарт не генерирует их |
-| Хранение | платформа | StorageClass предоставляет отдельные PVC PostgreSQL и Redis; production-дамп, ключ и применённые Helm values проверены восстановлением в новом namespace |
-| Адрес | платформа | сервис доступен только на локальной VM; публичные DNS и TLS не заявлены |
-| Registry | GitHub Actions | CI публикует образ в GHCR с тегом полного git SHA; кластер скачал образ без pull-secret. Если пакет станет приватным, нужен постоянный `imagePullSecrets` с отдельным read-only токеном |
-| Runner | локальная платформа | отдельная VM без общей папки и Docker socket; kubeconfig имеет Role только в `do14-helm` и `do14-production`, production запускается вручную |
+| Параметр | Контракт |
+|---|---|
+| Версия | `src/chart/Chart.yaml: appVersion`, n8n/task-runner 2.40.7 |
+| Образы | `$REGISTRY/{main,webhook,worker,runner}:$IMAGE_TAG`, один проверенный тег |
+| Release | `do14`, staging `do14-helm`, production `do14-production`; имена существующих PVC сохранены |
+| Доступ | staging NodePort 30678/30679, production 31678/31679 |
+| Секреты | внешний `n8n-secrets`, три постоянных значения; повторный deploy запрещает неявную смену |
+| Registry | push credentials для build; постоянный read-only deploy token для pull-secret |
+| Candidate | уникальный `do14-test-*` в staging, ClusterIP, отдельная БД/PVC/секреты, Newman и очистка |
+| Кластеры | GitHub — портфолио; GitLab — отдельный кластер Максима |
+| GitLab CI | Максим: feature build/test; ручной staging после test; ручной production после staging с тем же тегом |
+| Завершение передачи | реальный С1 на школьном GitLab + воспроизведение Максимом на чистом Ubuntu 22.04 |
 
-Применение чарта не создаёт Secret. Для разных окружений нужны разные ключи и PostgreSQL. Ключ шифрования сохраняется отдельно от дампа базы: потеря любого из них делает восстановление credentials неполным.
-
-Локальный запуск с публичным образом оставляет `imagePullSecrets: []`. Временный `GITHUB_TOKEN` не подходит для постоянного pull-secret: после окончания job новые Pod перестанут скачивать образ. Если пакет GHCR остаётся приватным, создайте в обоих namespace отдельный read-only pull-secret и укажите только его имя в Helm values. Учётные данные реестра не передаются через Helm values.
+Подробные команды: [src/README.md](../src/README.md). Проверки: [src/report.md](../src/report.md). Backup/restore и мониторинг остаются дополнительными материалами вне передаваемого src.

@@ -1,0 +1,31 @@
+gitlabUrl: https://git.21-school.ru
+concurrent: 1
+checkInterval: 3
+rbac:
+  create: true
+  clusterWideAccess: false
+serviceAccount:
+  create: true
+  name: gitlab-runner-manager
+runners:
+  secret: gitlab-runner-token
+  config: |
+    [[runners]]
+      [runners.kubernetes]
+        namespace = "gitlab-runner"
+        image = "docker:24.0.5-cli"
+        service_account = "do14-ci-job"
+        privileged = true
+        poll_timeout = 600
+        cpu_request = "100m"
+        memory_request = "256Mi"
+        memory_limit = "2Gi"
+        service_cpu_request = "100m"
+        service_memory_request = "256Mi"
+        service_memory_limit = "2Gi"
+        helper_memory_request = "64Mi"
+        helper_memory_limit = "256Mi"
+        [[runners.kubernetes.volumes.empty_dir]]
+          name = "docker-certs"
+          mount_path = "/certs/client"
+          medium = "Memory"

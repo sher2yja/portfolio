@@ -1,0 +1,140 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><title>n8n verification evidence 2026-09-30</title><style>body{font:16px system-ui;background:#fafafa;color:#18212d;margin:24px auto;max-width:1120px}h1{font-size:24px}h2{font-size:22px}nav{display:flex;gap:24px}section{margin:28px 0;border-top:1px solid #ccd5df;padding-top:16px}pre{font:13px/1.45 monospace;background:white;padding:18px;border:1px solid #dde3eb;overflow:auto}p{font-size:14px}</style><h1>n8n: actual local verification output ? 30 September 2026</h1><p>Read-only evidence viewer. Sources: commands on the WSL/k3s test environment and exported Newman JUnit. School GitLab and remote GitHub cycle remain unverified.</p><nav><a href="#Cluster">Cluster</a><a href="#Images">Images</a><a href="#Checks">Checks</a><a href="#Newman">Newman</a></nav><section id="Cluster"><h2>Cluster</h2><p>kubectl get nodes; kubectl -n &lt;namespace&gt; get pods -l app.kubernetes.io/instance=do14; kubectl get services</p><pre>NAME       STATUS   ROLES           AGE   VERSION
+do14-k3s   Ready    control-plane   28m   v1.35.8+k3s1
+
+do14-helm
+NAME                           READY   STATUS    RESTARTS   AGE
+do14-main-94d4f5c8c-5wwm8      1/1     Running   0          17m
+do14-postgres-0                1/1     Running   0          20m
+do14-redis-0                   1/1     Running   0          20m
+do14-webhook-fc6f89c89-vdc7f   1/1     Running   0          17m
+do14-worker-7f47ddb976-6f4pg   2/2     Running   0          17m
+NAME            TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)          AGE
+do14-main       NodePort    10.43.161.156   &lt;none&gt;        5678:30678/TCP   20m
+do14-postgres   ClusterIP   10.43.228.201   &lt;none&gt;        5432/TCP         20m
+do14-redis      ClusterIP   10.43.226.3     &lt;none&gt;        6379/TCP         20m
+do14-webhook    NodePort    10.43.22.119    &lt;none&gt;        5678:30679/TCP   20m
+
+do14-production
+NAME                            READY   STATUS    RESTARTS   AGE
+do14-main-b686f54c7-rvt7g       1/1     Running   0          17m
+do14-postgres-0                 1/1     Running   0          17m
+do14-redis-0                    1/1     Running   0          17m
+do14-webhook-6b9f6c8b5c-47pgl   1/1     Running   0          17m
+do14-worker-55c84c75d6-hsv28    2/2     Running   0          17m
+NAME            TYPE        CLUSTER-IP     EXTERNAL-IP   PORT(S)          AGE
+do14-main       NodePort    10.43.125.52   &lt;none&gt;        5678:31678/TCP   17m
+do14-postgres   ClusterIP   10.43.23.58    &lt;none&gt;        5432/TCP         17m
+do14-redis      ClusterIP   10.43.146.31   &lt;none&gt;        6379/TCP         17m
+do14-webhook    NodePort    10.43.40.75    &lt;none&gt;        5678:31679/TCP   17m
+</pre></section><section id="Images"><h2>Images</h2><p>docker image inspect &lt;four published images&gt; --format &lt;RepoTags, release label, CMD&gt;</p><pre>[&quot;127.0.0.1:5000/do14/main:verification-20260930&quot;]
+release=2.40.7
+CMD=[&quot;start&quot;]
+
+[&quot;127.0.0.1:5000/do14/webhook:verification-20260930&quot;]
+release=2.40.7
+CMD=[&quot;webhook&quot;]
+
+[&quot;127.0.0.1:5000/do14/worker:verification-20260930&quot;]
+release=2.40.7
+CMD=[&quot;worker&quot;,&quot;--concurrency=5&quot;]
+
+[&quot;127.0.0.1:5000/do14/runner:verification-20260930&quot;]
+release=2.40.7
+CMD=[&quot;javascript&quot;,&quot;python&quot;]
+
+</pre></section><section id="Checks"><h2>Checks</h2><p>bash tests/check-local.sh; kubeconform -strict -summary; ansible-playbook (repeat)</p><pre>TAP version 13
+# Subtest: diagnostics returns 0 for HTTP 200 and fails for HTTP 503
+ok 1 - diagnostics returns 0 for HTTP 200 and fails for HTTP 503
+  ---
+  duration_ms: 1781.858266
+  type: &#x27;test&#x27;
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 1
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 2481.194992
+==&gt; Linting chart
+[INFO] Chart.yaml: icon is recommended
+
+1 chart(s) linted, 0 chart(s) failed
+==&gt; Linting chart
+[INFO] Chart.yaml: icon is recommended
+
+1 chart(s) linted, 0 chart(s) failed
+==&gt; Linting chart
+[INFO] Chart.yaml: icon is recommended
+
+1 chart(s) linted, 0 chart(s) failed
+Chart invariants: staging, production, candidate OK
+Local checks passed
+
+Summary: 10 resources found parsing stdin - Valid: 10, Invalid: 0, Errors: 0, Skipped: 0
+Summary: 10 resources found parsing stdin - Valid: 10, Invalid: 0, Errors: 0, Skipped: 0
+Summary: 10 resources found parsing stdin - Valid: 10, Invalid: 0, Errors: 0, Skipped: 0
+
+[fog][WARNING] Unrecognized arguments: libvirt_ip_command
+
+PLAY [Подготовить локальный узел k3s] ******************************************
+
+TASK [Gathering Facts] *********************************************************
+ok: [vm]
+
+TASK [Установить пакеты для загрузки k3s] **************************************
+ok: [vm]
+
+TASK [Создать каталог конфигурации k3s] ****************************************
+ok: [vm]
+
+TASK [Отключить штатный Traefik] ***********************************************
+ok: [vm]
+
+TASK [Проверить установленную версию k3s] **************************************
+ok: [vm]
+
+TASK [Скачать официальный установщик k3s] **************************************
+skipping: [vm]
+
+TASK [Установить зафиксированную версию k3s] ***********************************
+skipping: [vm]
+
+TASK [Убедиться, что k3s запущен] **********************************************
+ok: [vm]
+
+TASK [Дождаться kubeconfig] ****************************************************
+ok: [vm]
+
+PLAY RECAP *********************************************************************
+vm                         : ok=7    changed=0    unreachable=0    failed=0    skipped=2    rescued=0    ignored=0   
+
+</pre></section><section id="Newman"><h2>Newman</h2><p>JUnit export from actual Newman runs; intentionally failing assertion tests cleanup</p><pre>Successful candidate
+main healthz: assertions=2, failures=0, errors=0
+main healthz/readiness: assertions=2, failures=0, errors=0
+webhook healthz: assertions=2, failures=0, errors=0
+webhook healthz/readiness: assertions=2, failures=0, errors=0
+webhook executes Code node through queue: assertions=2, failures=0, errors=0
+
+Deliberate Newman failure
+main healthz: assertions=2, failures=0, errors=0
+main healthz/readiness: assertions=2, failures=0, errors=0
+webhook healthz: assertions=2, failures=0, errors=0
+webhook healthz/readiness: assertions=2, failures=0, errors=0
+webhook executes Code node through queue: assertions=3, failures=1, errors=0
+
+Actual cleanup verification output:
+
+pod &quot;do14-test-1790771823-47297-main-cf97f9c4d-7cdng&quot; deleted from do14-helm namespace
+pod &quot;do14-test-1790771823-47297-postgres-0&quot; deleted from do14-helm namespace
+pod &quot;do14-test-1790771823-47297-redis-0&quot; deleted from do14-helm namespace
+pod &quot;do14-test-1790771823-47297-webhook-58cc567dd7-w9pbm&quot; deleted from do14-helm namespace
+pod &quot;do14-test-1790771823-47297-worker-59dbd49b85-vkv5c&quot; deleted from do14-helm namespace
+persistentvolumeclaim &quot;data-do14-test-1790771823-47297-postgres-0&quot; deleted from do14-helm namespace
+persistentvolumeclaim &quot;data-do14-test-1790771823-47297-redis-0&quot; deleted from do14-helm namespace
+secret &quot;do14-test-1790771823-47297-secrets&quot; deleted from do14-helm namespace
+secret &quot;do14-test-1790771823-47297-registry&quot; deleted from do14-helm namespace
+Newman failure propagated; candidate pods/PVC/secrets removed; permanent staging data preserved
+</pre></section></html>

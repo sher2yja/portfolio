@@ -14,6 +14,10 @@ on:
         type: choice
         options: [staging, production]
 
+concurrency:
+  group: do14-github
+  cancel-in-progress: false
+
 permissions:
   contents: read
 
@@ -22,8 +26,8 @@ defaults:
     shell: bash
 
 env:
-  PROJECT: devops_projects/n8n-k3s-local
-  IMAGE: ghcr.io/${{ github.repository_owner }}/do14-n8n
+  PROJECT: devops_projects/n8n-k3s-local/src
+  REGISTRY: ghcr.io/${{ github.repository_owner }}/do14-n8n
 
 jobs:
   build:
@@ -32,28 +36,29 @@ jobs:
       contents: read
       packages: write
     outputs:
-      image: ${{ steps.meta.outputs.image }}
+      registry: ${{ steps.meta.outputs.registry }}
+      tag: ${{ steps.meta.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
-      - name: Вычислить неизменяемый тег
+      - name: Compute image coordinates
         id: meta
-        run: echo "image=${IMAGE,,}:$GITHUB_SHA" >> "$GITHUB_OUTPUT"
-      - name: Собрать образ
-        run: docker build -t "${{ steps.meta.outputs.image }}" "$PROJECT"
-      - name: Проверить n8n и отсутствие SSH-клиента
         run: |
-          docker run --rm --entrypoint n8n "${{ steps.meta.outputs.image }}" --version
-          docker run --rm --entrypoint sh "${{ steps.meta.outputs.image }}" -c 'test ! -e /usr/bin/ssh && test ! -e /usr/bin/scp && test ! -e /usr/bin/sftp'
-      - name: Опубликовать образ в GHCR
+          echo "registry=${REGISTRY,,}" >> "$GITHUB_OUTPUT"
+          echo "tag=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+      - name: Build and publish all four roles
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
-          docker push "${{ steps.meta.outputs.image }}"
+          REGISTRY: ${{ steps.meta.outputs.registry }}
+          IMAGE_TAG: ${{ steps.meta.outputs.tag }}
+          REGISTRY_USER: ${{ github.actor }}
+          REGISTRY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+        run: bash "$PROJECT/ci/build.sh"
 
-  test:
+  validate:
     needs: build
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        role: [main, webhook, worker, runner]
     permissions:
       contents: read
       packages: read
@@ -69,10 +74,15 @@ jobs:
       - name: Проверить Helm-чарт и схемы Kubernetes для обоих окружений
         run: |
           for values in staging production; do
+            namespace=do14-helm
+            [[ "$values" != production ]] || namespace=do14-production
             helm lint "$PROJECT/chart" --set existingSecret=n8n-secrets -f "$PROJECT/chart/values-$values.yaml"
-            helm template do14 "$PROJECT/chart" -n "do14-$values" --set existingSecret=n8n-secrets -f "$PROJECT/chart/values-$values.yaml" > "/tmp/do14-$values.yaml"
+            helm template do14 "$PROJECT/chart" -n "$namespace" --set existingSecret=n8n-secrets -f "$PROJECT/chart/values-$values.yaml" > "/tmp/do14-$values.yaml"
             /tmp/kubeconform -strict -summary -kubernetes-version 1.30.0 "/tmp/do14-$values.yaml"
           done
+          helm lint "$PROJECT/chart" --set existingSecret=test-secrets --set service.type=ClusterIP -f "$PROJECT/chart/values-staging.yaml"
+          helm template do14-test-schema "$PROJECT/chart" -n do14-helm --set existingSecret=test-secrets --set service.type=ClusterIP -f "$PROJECT/chart/values-staging.yaml" > /tmp/do14-candidate.yaml
+          /tmp/kubeconform -strict -summary -kubernetes-version 1.30.0 /tmp/do14-candidate.yaml
       - name: Проверить, что сломанный чарт останавливается до деплоя
         run: |
           cp -a "$PROJECT/chart" /tmp/do14-broken-chart
@@ -97,7 +107,7 @@ jobs:
           TRIVY_USERNAME: ${{ github.actor }}
           TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
         with:
-          image-ref: ${{ needs.build.outputs.image }}
+          image-ref: ${{ needs.build.outputs.registry }}/${{ matrix.role }}:${{ needs.build.outputs.tag }}
           scanners: vuln
           severity: HIGH,CRITICAL
           format: json
@@ -107,7 +117,7 @@ jobs:
         run: |
           jq -r '[.Results[]?.Vulnerabilities[]?] | group_by(.Severity)[] | "\(.[0].Severity): \(length)"' trivy-image.json >> "$GITHUB_STEP_SUMMARY"
           accepted=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "CRITICAL" and .VulnerabilityID == "CVE-2026-60002" and (.PkgName | startswith("openssh")))] | length' trivy-image.json)
-          critical=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "CRITICAL" and ((.VulnerabilityID == "CVE-2026-60002" and (.PkgName | startswith("openssh"))) | not))] | length' trivy-image.json)
+          critical=$(jq --arg role '${{ matrix.role }}' '[.Results[]?.Vulnerabilities[]? | select(.Severity == "CRITICAL" and ((.VulnerabilityID == "CVE-2026-60002" and (.PkgName | startswith("openssh")) and $role != "runner") | not))] | length' trivy-image.json)
           echo "Принятое исключение CVE-2026-60002 (OpenSSH-клиент удалён): $accepted" >> "$GITHUB_STEP_SUMMARY"
           if (( critical > 0 )); then
             echo "::error::В образе $critical критических находок; см. отчёт Trivy"
@@ -117,44 +127,80 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: do14-image-scan
+          name: do14-image-scan-${{ matrix.role }}
           path: trivy-image.json
+          if-no-files-found: ignore
+
+  test:
+    needs: [build, validate]
+    runs-on: [self-hosted, linux, x64, do14-deploy]
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.23.3'
+      - run: npm install --global newman@6.2.1
+      - name: Test isolated candidate in portfolio cluster
+        env:
+          REGISTRY: ${{ needs.build.outputs.registry }}
+          IMAGE_TAG: ${{ needs.build.outputs.tag }}
+          REGISTRY_USER: ${{ github.actor }}
+          REGISTRY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+        run: bash "$PROJECT/ci/test-candidate.sh"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: do14-candidate
+          path: ${{ env.PROJECT }}/artifacts/
           if-no-files-found: ignore
 
   staging:
     needs: [build, test]
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || inputs.target == 'staging')
+    if: github.ref == 'refs/heads/main'
     runs-on: [self-hosted, linux, x64, do14-deploy]
     environment: do14-staging
+    concurrency:
+      group: do14-github-staging
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
-      - name: Развернуть staging
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.23.3'
+      - name: Deploy tested SHA to portfolio staging
         env:
-          DEPLOY_IMAGE: ${{ needs.build.outputs.image }}
-        run: |
-          helm upgrade --install do14 "$PROJECT/chart" \
-            --namespace do14-helm -f "$PROJECT/chart/values-staging.yaml" \
-            --set existingSecret=n8n-secrets \
-            --set-string n8n.image="${DEPLOY_IMAGE%:*}" \
-            --set-string n8n.imageTag="${DEPLOY_IMAGE##*:}" \
-            --atomic --wait --timeout 10m
-          kubectl -n do14-helm rollout status deployment/do14-main --timeout=120s
+          REGISTRY: ${{ needs.build.outputs.registry }}
+          IMAGE_TAG: ${{ needs.build.outputs.tag }}
+          N8N_ENCRYPTION_KEY: ${{ secrets.N8N_ENCRYPTION_KEY }}
+          N8N_RUNNERS_AUTH_TOKEN: ${{ secrets.N8N_RUNNERS_AUTH_TOKEN }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          PULL_USER: ${{ secrets.PULL_USER }}
+          PULL_TOKEN: ${{ secrets.PULL_TOKEN }}
+        run: bash "$PROJECT/ci/deploy.sh" staging
 
   production:
-    needs: [build, test]
+    needs: [build, test, staging]
     if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && inputs.target == 'production'
     runs-on: [self-hosted, linux, x64, do14-deploy]
     environment: do14-production
+    concurrency:
+      group: do14-github-production
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
-      - name: Развернуть production
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.23.3'
+      - name: Deploy tested SHA to portfolio production
         env:
-          DEPLOY_IMAGE: ${{ needs.build.outputs.image }}
-        run: |
-          helm upgrade --install do14 "$PROJECT/chart" \
-            --namespace do14-production -f "$PROJECT/chart/values-production.yaml" \
-            --set existingSecret=n8n-secrets \
-            --set-string n8n.image="${DEPLOY_IMAGE%:*}" \
-            --set-string n8n.imageTag="${DEPLOY_IMAGE##*:}" \
-            --atomic --wait --timeout 10m
-          kubectl -n do14-production rollout status deployment/do14-main --timeout=120s
+          REGISTRY: ${{ needs.build.outputs.registry }}
+          IMAGE_TAG: ${{ needs.build.outputs.tag }}
+          N8N_ENCRYPTION_KEY: ${{ secrets.N8N_ENCRYPTION_KEY }}
+          N8N_RUNNERS_AUTH_TOKEN: ${{ secrets.N8N_RUNNERS_AUTH_TOKEN }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          PULL_USER: ${{ secrets.PULL_USER }}
+          PULL_TOKEN: ${{ secrets.PULL_TOKEN }}
+        run: bash "$PROJECT/ci/deploy.sh" production
